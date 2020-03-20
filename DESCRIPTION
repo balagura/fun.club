@@ -1,0 +1,13 @@
+Package: fun.club
+Title: A workflow manager controling dependences and generation of R objects, their caching in memory and storage on disk
+Version: 0.0.0.9000
+Date: 2020-03-20
+Authors@R: person("Vladislav", "BALAGURA", email = "balagura@cern.ch", role = c("aut", "cre"))
+Description: Workflow manager
+License: GPL (>= 3) | file LICENSE
+Depends: R (>= 3.3.3)
+Encoding: UTF-8
+LazyData: true
+LinkingTo: Rcpp
+Imports: Rcpp (>= 1.0.2)
+RoxygenNote: 6.1.1
