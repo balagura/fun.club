@@ -264,6 +264,10 @@ make.fun.club <- function(dir,
                 stop('Can not create subdirectory ',subdir)
             } else new.exts <- c(new.exts, ext)
         }
+        ## clean environment which will be saved,
+        ## subdir exists only if savers are not empty and looped
+        ## over, so rm() it here
+        rm(subdir)
     }
     if (verbose >= 2) {
         if (length(new.exts) > 0) {
@@ -278,7 +282,7 @@ make.fun.club <- function(dir,
     ## to do: centralized clean 
     ## created after the loop but not needed afterwards. This environment will
     ## be saved, so delete `ext`, `new.exts`
-    rm(ext, subdir, new.exts)
+    rm(ext, new.exts)
     ## this environment will be saved but with only relevant variables, in
     ## particular, `dir` and `file` will NOT be saved. They are used when
     ## `fun.club` is in memory, but deleted before saving it to disk.
@@ -394,6 +398,12 @@ make.fun.club <- function(dir,
         ## Ie. in case fun.club[res1,res2,res3] = ...
         ## eg.: link.env[['res3']] will give 'res1'
         ##
+        ## "class" with "private" members:
+        ##   funs - all restoring functions across sessions,
+        ##          funs[[ extension ]] [[ version ]] == function
+        ##   versions - keeps versions for *this session*, ie.
+        ##              defined in make.fun.club(),
+        ##              version [[ extension ]] == version
         make.restorer <- function() {
             funs <- list()
             versions <- list()
@@ -401,6 +411,7 @@ make.fun.club <- function(dir,
                 versions <<- list()
             }
             add <- function(ext, f) {
+                cat('before adding',ext,'\n')
                 versions[[ ext ]] <<-
                     if (is.null( funs[[ ext ]] )) {
                         funs[[ ext ]] <<- list( f )
@@ -414,7 +425,10 @@ make.fun.club <- function(dir,
                             i - 1
                             ## -1 not to count `f` in `c(f, funs[[ ext ]])`
                         }
-                }
+                    }
+                ## Comparison of functions can be done similarly to fun.objects:
+                ## if (! isTRUE(all.equal(f.env $ fun, fun)) ||  # new fun
+                ## 
             }
             version <- function(ext) versions[[ ext ]]
             fun <- function(ext, version) funs[[ ext ]] [[ version ]]
@@ -1152,25 +1166,23 @@ make.fun.club <- function(dir,
         ## same.
         arg.list <- function(...) {
             f <- function() {
-                ## all arguments except in `...` (explicitly named by the
-                ## caller or positional) appear in the environment of the
+                ## all arguments except in `...`, ie. explicitly named by the
+                ## caller or positional, appear in the environment of the
                 ## function. Those in `...` can be accessed via
                 ## `list(...)`. The following constructs the full list of
                 ## arguments:
-                args <- if ('...' %in% names( formals() )) {
-                            ## remove '...' from the environment and add
-                            ## list(...)
-                            rm('...')
-                            c(as.list( environment(), all.names = TRUE ),
-                              list(...))
-                        } else {
-                            as.list( environment(), all.names = TRUE )
-                        }
+                args <- as.list( environment(), all.names = TRUE )
+                if ('...' %in% names( formals() )) {
+                    ## the best way to remove '...', always works regardless of other
+                    ## arguments (named or not) and whether '...' is present or absent
+                    args['...'] <- NULL
+                    args <- c(args, list(...))
+                }
                 if (! is.null( names( args ))) {
-                    ## sort arguments, so that the order of named arguments is
-                    ## not important. Since the sort is stable, unnamed
-                    ## arguments keep their position and act as positional
-                    ## arguments.
+                    ## sort arguments, so that the order of named arguments becomes
+                    ## invariant. Unnamed arguments are placed first and, since the
+                    ## sort is stable, their relative order is preserved, so they can
+                    ## be correctly used as positional arguments.
                     ##
                     ## Side note: `names(list(10,20)) = names(list()) = NULL`
                     ## while `names(list(a=1, 10, 20)) = c('a', '', '')`
@@ -1217,7 +1229,7 @@ make.fun.club <- function(dir,
         all.links <- function() list(names = ls(all.names=TRUE, link.env),
                                      envir = envir)
 
-        ## todo: add fun.club::: for add_arg and others
+        ## todo: add docs on C++ fun.club:::add_arg and other C++ funcs
         ## --------------- Functions, "exported" to `fun.link`s ---------------
         set.link <- function(link) {
             link.methods[['fun.object']] <<- link[['fun.object']]
@@ -1759,98 +1771,3 @@ print.fun.link <- function(x) {
 }
 
 
-## unlink('~/out', recursive=TRUE)
-## library(fun.club)
-## fc <- make.fun.club('~/out')
-## fc[letters[4:6], character.only=TRUE] <- function(...) {
-##     dots <- list(...)
-##     list(..1, ..2 * 2, length(dots))
-## }
-## fc[a] <- function(...) {
-##     dots <- list(...)
-##     list(d[...], e[...] * 2, f[...], dots)
-## }
-##
-## f[3,4,5]
-## a[9,10]
-## a[19,10]
-## a[9,110]
-## a[19,110]
-##
-## unload('fc')
-## fc <- make.fun.club('~/out',
-##                     savers =
-##                         list(rds = c(
-##                                  function(object, file)
-##                                      saveRDS(object, file = file),
-##                                  function(file) {
-##                                      print('reading RDS')
-##                                      readRDS(file = file)
-##                                  })))
-## ls.str(environment(environment(fc$all.links)$restorer$fun))
-## environment(environment(fc$all.links)$restorer$fun)$funs
-## a[19,110]
-## a[19,111]
-##
-## unload('fc')
-## fc <- make.fun.club('~/out')
-## ls.str(environment(environment(fc$all.links)$restorer$fun))
-## environment(environment(fc$all.links)$restorer$fun)$funs
-## a[19,110]
-## a[19,111]
-##
-## fc['a'] = function(x) x
-## fc['b'] = function(x) a[1]+x
-## fc['cc'] = function(x) b[10]+x*2
-## cc[10]
-## b[5]
-## a[100]
-## b[[10]] <- NULL
-## b[10]
-## fc['b'] = function(x) a[2]+x
-## b[10]
-## a[[2]] <- NULL
-## b[20]
-## a[[2]] <- NULL
-## cc[50]
-## b[[10]] <- NULL
-## cc[100]
-##
-## fc[test.by.ref, by.reference = TRUE] = function(x, output.env) { output.env$test.by.ref = 2*x; x }
-## fc[test.by.ref1] = function(x) 2*x
-## stopifnot(test.by.ref1 [ 10 ] == test.by.ref [ 10 ])
-## fc[test.by.ref, by.reference = FALSE] = function(x, output.env) { output.env$test.by.ref = 2*x; x }
-## stopifnot(test.by.ref [ 10, new.env() ] == 10)
-##
-## ## test that x does not conflict with x argument in `[<-.fun.club`
-## fc[x]=function(x) 2*x
-## stopifnot(x[10] == 20)
-## ## same for value, by.reference and character.only arguments in `[<-.fun.club`
-## fc[value]=function(x) x^2
-## stopifnot(value[10] == 100)
-## fc[by.reference]=function(x) x^2
-## stopifnot(by.reference[3] == 9)
-## fc[by.reference, by.reference=TRUE]=function(x, output.env) {output.env$by.reference = x^2; 100}
-## stopifnot(by.reference[3] == 9)
-## fc[character.only, character.only=FALSE]=function(x) x^2
-## stopifnot(character.only[3] == 9)
-## fc[x]
-## fc[value]
-## fc[by.reference]
-## fc[character.only]
-##
-## ## test that fun.link can accept `*tmp*`, x and value arguments
-## fc[test] = function(`*tmp*` = 0, x = 0, value = 0) `*tmp*` * x * value
-## stopifnot(test[`*tmp*`=1, x=2, value=3] == 6)
-##
-##
-## unlink('~/out', recursive=TRUE)
-## fc <- make.fun.club(dir = '~/out')
-## fc[f1] = function(x) 2*x
-## fc[f2] = function(y=1, ...) f1[y] * sum(unlist(list(...)))
-## fc[f3] = function() { function(n) { rnorm(n) } }
-## fc[f4, f5, f6] = function(a, b) list(f1[a+b], f2[a,b], f3[])
-## fc[f7] = function(a, b) f4[a,b] + f5[a,b]
-## f7[1,2]
-## fc['f1'] = function(x) x^2 # deletes all dependencies
-## f7[1,2]
