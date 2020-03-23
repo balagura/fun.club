@@ -95,3 +95,23 @@ be invalidated and deleted.
 One can have many `fun.club`s open at the same time if they all point to
 different physical directories.
 
+# Installation
+requires Rcpp and devtools packages.
+
+```
+git clone https://github.com/balagura/fun.club.git
+R
+```
+In the R session:
+```
+devtools::document('fun.club')
+Rcpp::compileAttributes('fun.club')
+```
+Then install with
+```
+sudo R
+```
+and in the R session
+```
+devtools::install('fun.club')
+```
