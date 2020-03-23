@@ -6,29 +6,22 @@
 #include <iostream>
 #include <cstdlib>  // for atoi()
 #include <Rcpp.h>
+#include "fun.club.h" // only defines Encoder, but Rcpp requires the interface file to be named fun.club.h
 using namespace Rcpp;
 
-struct Encoder {
-  std::map<std::string, int> m;                              // arg - int
-  std::map<int, std::pair<std::string, std::string> > m_inv; // int - (arg, printable_arg)
-  std::set<int> holes;                                       // int holes
-  std::set<int> values;                                      // int
-};
-typedef std::map<std::string, Encoder> Encoders;
+/**
+   String to integer encoder
 
-//'
-//'   String to integer encoder
-//'
-//'   Initializes C++ Encoder containers.
-//'
-//'   @return R external pointer which "wraps" the C++ pointer to the newly
-//'   created C++ Encoder. The latter will be deleted when R external pointer will
-//'   go out of scope.
-//'
-//'   @author Vladislav BALAGURA <balagura@cern.ch>
-//'
-//'   @keywords internal
-//'
+   Initializes C++ Encoder containers.
+
+   @return R external pointer which "wraps" the C++ pointer to the newly
+   created C++ Encoder. The latter will be deleted when R external pointer will
+   go out of scope.
+
+   @author Vladislav BALAGURA <balagura@cern.ch>
+
+   @keywords internal
+*/
 // [[Rcpp::export]]
 XPtr<Encoders > new_arg_encoder() {
   return XPtr<Encoders>( new(Encoders) );
@@ -63,7 +56,6 @@ XPtr<Encoders > new_arg_encoder() {
    @author Vladislav BALAGURA <balagura@cern.ch>
 
    @keywords internal
-
 */
 // [[Rcpp::export]]
 List add_arg(XPtr<Encoders> xptr, std::string fo, std::string arg, std::string printable_arg) {
@@ -112,7 +104,6 @@ List add_arg(XPtr<Encoders> xptr, std::string fo, std::string arg, std::string p
    @author Vladislav BALAGURA <balagura@cern.ch>
 
    @keywords internal
-
 */
 // [[Rcpp::export]]
 int ind_arg(XPtr<Encoders> xptr, std::string fo, std::string arg) {
@@ -139,7 +130,6 @@ int ind_arg(XPtr<Encoders> xptr, std::string fo, std::string arg) {
    @author Vladislav BALAGURA <balagura@cern.ch>
 
    @keywords internal
-
 */
 // [[Rcpp::export]]
 CharacterVector printable_arg(XPtr<Encoders> xptr, const std::string& fo, int ind) {
@@ -166,8 +156,7 @@ CharacterVector printable_arg(XPtr<Encoders> xptr, const std::string& fo, int in
 
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
- */
+*/
 // [[Rcpp::export]] 
 int rm_arg(XPtr<Encoders> xptr, std::string fo, int ind) {
   Encoder& xx = (*xptr)[ fo ];
@@ -202,7 +191,6 @@ int rm_arg(XPtr<Encoders> xptr, std::string fo, int ind) {
    
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
 */
 // [[Rcpp::export]] 
 void load_fo_arg(XPtr<Encoders> xptr,
@@ -243,7 +231,6 @@ void load_fo_arg(XPtr<Encoders> xptr,
    
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
 */
 // [[Rcpp::export]] 
 XPtr<Encoders > load_arg(List arg_encoder) {
@@ -271,7 +258,6 @@ int         get_value(std::pair<std::string, int> p) { return p.second; }
    
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
 */
 // [[Rcpp::export]] 
 List dump_arg(XPtr<Encoders> xptr) {
@@ -304,7 +290,6 @@ List dump_arg(XPtr<Encoders> xptr) {
    
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
 */
 // [[Rcpp::export]] 
 void print_arg(XPtr<Encoders> xptr) {
@@ -339,7 +324,6 @@ void print_arg(XPtr<Encoders> xptr) {
    
    @author Vladislav BALAGURA <balagura@cern.ch>
    @keywords internal
-
 */
 // [[Rcpp::export]] 
 void clear_arg(XPtr<Encoders> xptr) {
