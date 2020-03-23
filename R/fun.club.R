@@ -411,7 +411,6 @@ make.fun.club <- function(dir,
                 versions <<- list()
             }
             add <- function(ext, f) {
-                cat('before adding',ext,'\n')
                 versions[[ ext ]] <<-
                     if (is.null( funs[[ ext ]] )) {
                         funs[[ ext ]] <<- list( f )
