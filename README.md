@@ -100,18 +100,18 @@ requires Rcpp and devtools packages.
 
 ```
 git clone https://github.com/balagura/fun.club.git
-R
 ```
-In the R session:
+This creates 'fun.club' subdirectory in the current directory.
+Then, in the R session type
 ```
 devtools::document('fun.club')
 Rcpp::compileAttributes('fun.club')
 ```
-Then install with
+To install system-wide, restart the session with the root privileges
 ```
 sudo R
 ```
-and in the R session
+(or just continue in the same R session to install for the current user only) and type
 ```
 devtools::install('fun.club')
 ```
