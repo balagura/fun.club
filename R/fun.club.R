@@ -6,11 +6,115 @@
 #'     objects, their caching in memory and storing on disk. It automatically
 #'     tracks the object dependencies, so that if one object is invalidated
 #'     eg. by modifying its generating function, it is deleted together with
-#'     all dependencies.  Later, when referenced by the user, it is
-#'     automatically regenerated always using the most recent generating
-#'     functions. This is done behind the scenes, but the interface is
-#'     transparent for the user as shown in the following minimal example:
+#'     all dependencies. Later, when referenced, it is automatically
+#'     regenerated always with the most recent generating functions. This is
+#'     done behind the scenes, but the interface is transparent for the user,
+#'     see examples.
 #'
+#'
+#' @details One can have many `fun.club`s open at the same time if they all
+#'     point to different physical directories.
+#'
+#' The functions are considered equivalent if they are `deparse()`d into the
+#' same character string. This means, in particular, that the code outside the
+#' functions is not checked, eg. if the function object calls another function
+#' not in `fun.club`, and this function changes, the objects will not be
+#' deleted.
+#'
+#' The package does not impose any limitation on the function object names,
+#' any R names can be used (note that all variable names are limited in R to
+#' 10000 bytes, however, and were to 256 bytes in versions of R before 2.13.0,
+#' see ?name). Any arguments can be used: named, positional and `...`. The
+#' equivalent argument combinations like `a=1, 2, c=3` and `c=3, 1, 2` for a
+#' function `function(a=1, b=2, ..., c=3)` are recognized and a new object is
+#' generated only for new arguments.
+#'
+#' _Advanced:_ There are two special function arguments: `output.env` and
+#' 'file.ext` described below. They are related to the ways how the objects
+#' are stored in memory and on disk, respectively. By default, the storage is
+#' done fully automatically and is hidden from the user. These two arguments,
+#' however, alter the default algorithms.
+#'
+#' _Advanced:_ 'output.env' argument can be useful for storing big
+#' objects. For example, let's consider
+#' ```
+#' fun.club[typical.use] <- function(n) 1:n
+#' ```
+#' Then, eg. the call `typical.use[100000]` generates a "big object" which is
+#' returned by the function and then copied to its final destination by the
+#' library. To avoid copying, the object can be placed directly into the final
+#' place, or, more precisely, to the final `environment`. The latter acts as a
+#' `directory` holding R objects and is referred to by `output.env`. For
+#' example,
+#' ```
+#' fun.club[advanced.use] <- function(n, output.env) {
+#'   output.env[[ 'advanced.use' ]] <- 1:n
+#' }
+#' ```
+#' Using `output.env[[ 'advanced.use' ]] <- 1:n` the user stores directly
+#' his/her "big object", so no extra copying is needed.  Initially,
+#' `output.env` should appear as the argument of the function in `function(n,
+#' output.env)`, but it should not
+#' 
+#' 1) have a default value nor
+#' 2) be modified by the caller eg. like in `advanced.use[100000, output.env =
+#' new.env()]`.
+#' 
+#' Then, behind the scenes, the library assigns to `output.env` its correct
+#' newly created environment value, so that in the function body the
+#' expression `output.env[[ 'advanced.use' ]] <- 1:n` becomes valid.
+#'
+#' In `output.env` environment the object is always stored under the name of
+#' the function object, ie. `advance.use` in our case.
+#'
+#' If `output.env` appears as a function argument, the library assumes that it
+#' is the responsibility of the user to store the object and does not try to
+#' do that itself.
+#' 
+#' _Advanced:_ The way the files are stored on disk is determined by the
+#' `extension.selector` and `savers` arguments in `make.fun.club`
+#' function. Depending on the R object to be saved, the former decides which
+#' file name extension should be chosen and the latter contains the storage
+#' function for a given extension. This works fine for saving any R
+#' objects. Sometimes, however, one might need to store files external to
+#' R. Eg. one may want to download remote files to local disk and then process
+#' them in R.  This step may be performed in R, but the files themselves with
+#' the "raw" data may not corresponding to any R object.  Then, it is still
+#' advantageous to have the download algorithms and downloaded files under
+#' control of `fun.club` library. In this case, the files are automatically
+#' deleted if the algorithms change and, on the other hand, only the necessary
+#' files are stored and without duplication.
+#'
+#' Since the `fun.club` automatic algorithms do not know how to save such
+#' "raw" data, the user can do that her/himself by using the `file.ext`
+#' argument. When calling, `file.ext` should be set to the desired file name
+#' extensions. Then, internally, this argument is expanded to the full
+#' absolute file names with the corresponding extensions, so that in the
+#' function body the user can use them (but without modifying them). The files
+#' will be saved in the same directories where `fun.club` stores other
+#' objects.
+#'
+#' The syntax is explained in the following example
+#' ```
+#' fun.club[ write.external.files ] = function(x, file.ext = c("txt", "txt.gz") {
+#'   writeLines(x, file=file.ext[1])
+#'   system(paste("gzip -c", file.ext[1], ">", file.ext[2]))
+#'   file.ext
+#' }
+#' ```
+#' Then, `write.external.files[1:10]` stores the numbers 1:10 to the files
+#' <name>.txt and (in gzip'ed form) <name>.gz controlled by `fun.club`. The
+#' exact <name> is unique and is chosen by `fun.club` internal algorithms.
+#'
+#' Since the function above returns `file.ext`, the return value is a vector
+#' (<name>.txt, <name>.gz). Calling `write.external.files[1:10]` with the same
+#' arguments always returns these file names without regenerating the files.
+#'
+#' Using `file.ext` argument, the user informs the library that <name>.txt,
+#' <name>.gz depend on its generating function and should be deleted if the
+#' latter (or any function object which it might contain) changes.
+#'
+#' @examples
 #' ## create `fun.club`: a factory to generate `fun.objects`, ie. special 
 #' ## functions equipped with the capabilities to track and to cache all
 #' ## generated objects.
@@ -75,24 +179,15 @@
 #' ## with them as if they were always available:
 #' ##
 #' f7[1,2] + f6[3,4]                                                  
-#'
-#' The package does not impose any limitation on the function object names,
-#' any R names can be used (note that all variable names are limited in R to
-#' 10000 bytes, however, and were to 256 bytes in versions of R before 2.13.0,
-#' see ?name). Any arguments can be used: named, positional and `...`. The
-#' equivalent argument combinations like `a=1, 2, c=3` and `c=3, 1, 2` for a
-#' function `function(a=1, b=2, ..., c=3)` are recognized and a new object is
-#' generated only for new arguments.
-#'
-#' The functions are considered equivalent if they are `deparse()`d into the
-#' same character string. This means, in particular, that the code outside the
-#' functions is not checked, eg. if the function object calls another function
-#' not in `fun.club`, and this function changes, the objects will not be
-#' deleted.
-#'
-#' One can have many `fun.club`s open at the same time if they all point to
-#' different physical directories.
 #' 
+#' @docType package
+#' @name fun.club
+#' @author Vladislav BALAGURA <balagura@cern.ch>
+#'
+#' @import Rcpp
+#' @useDynLib fun.club
+NULL  
+
 #' to do: technicalities:
 #' 1) "normalization" of args, serialization and -> int
 #' 2) fo names: All variable names are limited in R to 10000 bytes
@@ -105,13 +200,6 @@
 #' 6) one can have several fc if all of them point to different directories
 #' 7) *tmp* and value  in '['
 #' 
-#' @docType package
-#' @name fun.club
-#' @author Vladislav BALAGURA <balagura@cern.ch>
-#'
-#' @import Rcpp
-#' @useDynLib fun.club
-NULL  
 
 ## to do: wish list:
 ## 1) API to check that object is in memory
@@ -254,35 +342,10 @@ make.fun.club <- function(dir,
             dir <- normalizePath(dir)
             if (verbose >= 2) message(dir, ' is created')
         }
-    } else  dir <- normalizePath(dir)
+    } else dir <- normalizePath(dir)
     ## after normalizePath(), `dir` contains absolute path
-    new.exts <- character(0)
-    for (ext in names(savers)) {
-        subdir <- file.path(dir, ext)
-        if (! file.exists( subdir )) {
-            if (! dir.create(subdir, recursive = TRUE) ) {
-                stop('Can not create subdirectory ',subdir)
-            } else new.exts <- c(new.exts, ext)
-        }
-        ## clean environment which will be saved,
-        ## subdir exists only if savers are not empty and looped
-        ## over, so rm() it here
-        rm(subdir)
-    }
-    if (verbose >= 2) {
-        if (length(new.exts) > 0) {
-            if (length(new.exts) == 1)
-                message(file.path(dir, new.exts), ' is created for generated objects')
-            else
-                message(file.path(dir, paste0('{', paste0(new.exts, collapse=','), '}')),
-                        ' are created for generated objects')
-        }
-    }
     file <- file.path(dir, 'fun.club.rds')
-    ## to do: centralized clean 
-    ## created after the loop but not needed afterwards. This environment will
-    ## be saved, so delete `ext`, `new.exts`
-    rm(ext, new.exts)
+    ##
     ## this environment will be saved but with only relevant variables, in
     ## particular, `dir` and `file` will NOT be saved. They are used when
     ## `fun.club` is in memory, but deleted before saving it to disk.
@@ -361,6 +424,7 @@ make.fun.club <- function(dir,
         ## All `make.fun.club()` arguments can be changed freely between R
         ## sessions or after `unload(fun.club)`. They will be deleted by
         ## `e$save.on.exit()` just before saving everything else.
+        e $ create.ext.dirs( names(savers) )
         for (fo in ls(all.names=TRUE, e$fun.env)) {
             e$create.fun.links( fo )
         }
@@ -386,8 +450,32 @@ make.fun.club <- function(dir,
         e$clean.env( e )
         return( structure(class = 'fun.club', e$methods) )
     } else {
-        if (verbose >= 2) message('`fun.club` will be saved to ', file)
         ## the arguments of this function automatically appear in this `environment()`
+        if (verbose >= 2) message('`fun.club` will be saved to ', file)
+        ## creates subdirectories (only if they do not exist) for files with
+        ## the extensions from the vector `exts`
+        create.ext.dirs <- function(exts) {
+            new.exts <- character(0)
+            for (ext in exts) {
+                subdir <- file.path(dir, ext)
+                if (! file.exists( subdir )) {
+                    if (! dir.create(subdir, recursive = TRUE) ) {
+                        stop('Can not create subdirectory ',subdir)
+                    } else new.exts <- c(new.exts, ext)
+                }
+            }
+            if (verbose >= 2) {
+                if (length(new.exts) > 0) {
+                    if (length(new.exts) == 1)
+                        message(file.path(dir, new.exts), ' is created for generated objects')
+                    else
+                        message(file.path(dir, paste0('{', paste0(new.exts, collapse=','), '}')),
+                                ' are created for generated objects')
+                }
+            }
+        }
+        create.ext.dirs( names(savers) )
+        ##
         fun.env  <- new.env( parent = emptyenv() )
         link.env <- new.env( parent = emptyenv() )
         ## create new C++ arg encoder which associates function arguments to
@@ -510,7 +598,7 @@ make.fun.club <- function(dir,
                  add.to.top = add.to.top, clear = clear, to.char = to.char)
         }
         stack <- make.stack()
-
+        
         clean.env <- function(fun.club.env) {
             not.func <- Filter(function(n) !is.function(fun.club.env[[ n ]]),
                                ls(all.names = TRUE, fun.club.env ))
@@ -640,13 +728,6 @@ make.fun.club <- function(dir,
                 ## not a link as a tree branch. Subdivision into the links
                 ## will appear in the very end at the level of leaves,
                 ## ie. generated objects.
-                ##
-                ## 3) `by.reference` - logical indicating whether the function
-                ## just returns the result and it should be later saved to its
-                ## final place, or the result will be saved to its final
-                ## destination directly inside the function. If the result is
-                ## a big object, the latter can be advantageous to avoid
-                ## copying.
                 ##
                 ## Finally, `fun.env[[ fo.name ]]` contains environments
                 ## corresponding to the given combination of arguments. The
@@ -986,7 +1067,7 @@ make.fun.club <- function(dir,
         ## updated. If `links` are associated to `fun` in a new way, ALL
         ## function objects having at least one conflicting link in common are
         ## deleted with `warning()`s.
-        assign.fun.object <- function(links, fun, by.reference) {
+        assign.fun.object <- function(links, fun) {
             if (length( links ) > length( unique(links) ))
                 stop('Link names must be unique')
             fos <- linked.funs( intersect( links, ls(all.names=TRUE, link.env) ))
@@ -996,12 +1077,10 @@ make.fun.club <- function(dir,
                 f.env <- fun.env[[ fos ]]
                 if (identical(f.env $ links, links)) {
                     ## exact correspondance to one fun.object
-                    if (! isTRUE(all.equal(f.env $ fun, fun)) ||  # new fun
-                        f.env $ by.reference != by.reference ) {
+                    if (! isTRUE(all.equal(f.env $ fun, fun)) ) { # new fun
                         rm.all.generated( fos )
                         if (verbose >= 1) message('updating ', fos.print)
                         f.env $ fun <- fun
-                        f.env $ by.reference <- by.reference
                         ## assign in explicit environment
                         ## links match exactly, no need to relink
                     } else { ## check that fos's links are not accidentally
@@ -1032,7 +1111,6 @@ make.fun.club <- function(dir,
             f.env <- fun.env[[ links[1L] ]] <- new.env( parent = emptyenv() )
             f.env $ fun <- fun
             f.env $ links <- links
-            f.env $ by.reference <- by.reference
             for (link in links) {
                 link.env[[ link ]] <- links[1L]
             }
@@ -1158,41 +1236,27 @@ make.fun.club <- function(dir,
             }
         }
 
-        ## returns a `list` of given `func` function arguments transmitted in
-        ## `...`. The latter, in turn, can include named, positional and `...`
-        ## arguments. The returned `list` is independent of the way of
-        ## transferring the arguments if the resulting combination is the
-        ## same.
+        ## Returns the `list` of evaluated function arguments transferred from
+        ## the caller in `...`. The latter, in turn, can include named,
+        ## positional and `...` arguments. The result is independent of the
+        ## way of transferring the arguments if the resulting argument
+        ## combination is the same. Note that if the arguments with the
+        ## default values do not appear in `...`, they are not included.
         arg.list <- function(...) {
-            f <- function() {
-                ## all arguments except in `...`, ie. explicitly named by the
-                ## caller or positional, appear in the environment of the
-                ## function. Those in `...` can be accessed via
-                ## `list(...)`. The following constructs the full list of
-                ## arguments:
-                args <- as.list( environment(), all.names = TRUE )
-                if ('...' %in% names( formals() )) {
-                    ## the best way to remove '...', always works regardless of other
-                    ## arguments (named or not) and whether '...' is present or absent
-                    args['...'] <- NULL
-                    args <- c(args, list(...))
-                }
-                if (! is.null( names( args ))) {
-                    ## sort arguments, so that the order of named arguments becomes
-                    ## invariant. Unnamed arguments are placed first and, since the
-                    ## sort is stable, their relative order is preserved, so they can
-                    ## be correctly used as positional arguments.
-                    ##
-                    ## Side note: `names(list(10,20)) = names(list()) = NULL`
-                    ## while `names(list(a=1, 10, 20)) = c('a', '', '')`
-                    args[ order(names(args)) ]
-                } else {
-                    args
-                }
+            ## `force` evaluates all the arguments (and stops lazy propagation
+            ## without the evaluation)
+            res <- lapply(list(...), force)
+            if (! is.null( names( args ))) {
+                ## sort arguments, so that the order of named arguments
+                ## becomes invariant. Unnamed arguments are placed first and,
+                ## since the sort is stable, their relative order is
+                ## preserved, so they will be at the correct positions.
+                ##
+                ## Side note: `names(list(10,20)) = names(list()) = NULL`
+                ## while `names(list(a=1, 10, 20)) = c('a', '', '')`
+                res <- res[ order(names(args)) ]
             }
-            fo <- link.methods[['fun.object']]
-            formals(f) <- formals( fun.env[[ fo ]] $ fun )
-            f(...)
+            res
         }
 
         ## printable version of the list, eg. for `l = list(a=1, 2)` returns
@@ -1237,13 +1301,17 @@ make.fun.club <- function(dir,
         ## returns the `i.link`-th element of the list object generated by
         ## common function `fo` using `...` as arguments. Retrieve it from
         ## disk if it is not in memory or generate if not on disk.
-        generate <- function(...) {
+        generate <- function( ... ) {
             fo <- link.methods[['fun.object']]
             i.link <- link.methods[['i.link']]
             ##
             f.env <- fun.env[[ fo ]]
             links <- f.env $ links
             link <- links[ i.link ]
+            form <- formals(f.env $ fun)
+            ## output.env and file.ext arguments will be checked later, if the
+            ## new object will be generated. If it was generated already, the
+            ## arguments were fine
             args <- arg.list( ... )
             serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
             cArgs <- print.list( args )
@@ -1266,6 +1334,64 @@ make.fun.club <- function(dir,
                 }
                 ## message(indent,'generating ',o.name)
                 tryCatch({
+                    ## Check special args output.env and file.ext. Note:
+                    ## changing the latter modifies the serialized string
+                    ## serialized.arg, while output.env should always be
+                    ## undefined.
+                    output.env <- !is.null(form[['output.env']])
+                    if (output.env) {
+                        if (!identical(form[['output.env']], quote(expr=)) || # output.env has default value or
+                            !is.null(args[['output.env']])) {                 # is defined by the caller
+                            stop(paste0(
+                                'output.env appearing in the signature of a function is substituted internally by\n',
+                                'the environment where the function object will be stored. This argument must not\n',
+                                'have a default value. When called, it must be missing.\n',
+                                'Eg. fun.club["f"] = function(x, output.env) {output.env[["f"]] <- x}; f[1]'
+                            ))
+                        }
+                    }
+                    file.ext <- args[['file.ext']] # start from args, if file.ext is there but not in signature,
+                    ## function call will anyway fail
+                    if (is.null(file.ext)) { # if absent in args, it may be defined through the default value
+                        file.ext <- form[['file.ext']]
+                        if (identical(file.ext, quote(expr=))) { # argument exists but without default value
+                            ## quote(expr=) is a "missing argument" - the
+                            ## "strange" but standard object with an empty
+                            ## name "".  Can be obtained as
+                            ## `quote(f(x=))[[2]]` or just `quote(expr=)`. It
+                            ## can not be bound to a "normal" name, eg. `x <-
+                            ## quote(expr=)`, but its evaluation (just `x`)
+                            ## produces a cryptic error `argument "x" is
+                            ## missing, with no default`.
+                            stop('If function receives file.ext argument, it must be defined')
+                        }
+                        file.ext <- eval(file.ext) # evaluate, otherwise its  `typeof()` is `language`
+                    }            
+                    if (!is.null(file.ext)) { # argument exists
+                        list.of.char.vectors <-
+                            is.list(file.ext) &&
+                            all(sapply(file.ext, function(x) class(x) == 'character')) && # empty list() passes
+                            length(file.ext) == length(links)
+                        single.char.vector <- length(links) == 1 && is.character(file.ext)
+                        if (!list.of.char.vectors && !single.char.vector) {
+                            stop(paste0(
+                                'file.ext must be a list of character vectors, one per function object. If there is\n',
+                                'only one function object, it may also be a character vector.'
+                            ))
+                        }
+                        ## file.ext is a list of character vectors with length 1 or more, or
+                        ## just one character vector or NULL 
+                    }
+                    if (!is.null(file.ext)) {
+                        ## file.ext will be in the same shape as given:
+                        if (is.list(file.ext)) { # either a list of character vectors (for 1 or more links)
+                            args[['file.ext']] <- lapply(seq_along(links),
+                                                         function(i) file.name(fo, ind, i, file.ext[[ i ]]))
+                        } else { # or just one character vector (for 1 link)
+                            args[['file.ext']] <- file.name(fo, ind, 1, file.ext)
+                        }
+                        create.ext.dirs( unlist(file.ext) ) # unlist works for both list and one vector
+                    }
                     o.env <- f.env [[ ind ]] <- new.env( parent = emptyenv() )
                     o.env $ parents  = list()
                     o.env $ children = list()
@@ -1274,8 +1400,9 @@ make.fun.club <- function(dir,
                     o.env $ file = list()
                     o.env $ data.env = new.env( parent = emptyenv() )
                     e <- o.env $ data.env
-                    if (f.env $ by.reference) {
-                        f.env $ fun(..., output.env = e) # call
+                    if (output.env) {
+                        args[['output.env']] <- e
+                        do.call(f.env $ fun, args) # call
                         for (l in links) {
                             if (! exists(link, envir = e, inherits = FALSE) ) {
                                 stop(o.name,
@@ -1294,9 +1421,10 @@ make.fun.club <- function(dir,
                         ## common list. Unpack them from the list and store.
                         n.links <- length( links )
                         if (n.links == 1L) {
-                            e[[ link ]] <- f.env $ fun(...) # call
+                            e[[ link ]] <- do.call(f.env $ fun, args) # call
+                            ## problem with ... eg. in fc[f]=function(...) { ..1 }; f[10,2]
                         } else {
-                            res <- f.env $ fun(...) # call
+                            res <- do.call(f.env $ fun, args) # call
                             if ( ! is.list( res ) ||
                                  n.links != length( res ) ) {
                                 stop(indent, 'The result of ',o.name,
@@ -1333,28 +1461,31 @@ make.fun.club <- function(dir,
                     for (i in seq_along(links)) {
                         l <- links[ i ]
                         exts <- extension.selector( o.env $ data.env [[ l ]] )
-                        if (length( exts ) > 0) {
-                            for (ext in exts) {
-                                ## save function is in [[ 1 ]]
-                                savers[[ ext ]] [[ 1 ]] (
-                                    object = o.env $ data.env [[ l ]],
-                                    file = file.name(fo, ind, i, ext)
-                                )
-                            }
-                            ## note, the list `o.env $ file` is unnamed and
-                            ## can only be referenced by numbers. It has the
-                            ## same ordering as `f.env $ links`. This means
-                            ## that in the conventions used throughout the
-                            ## code, its `i.link`-th element corresponds to
-                            ## the `link` in the sense that `link == f.env $
-                            ## links[ i.link ]`
-                            ##
-                            ## First extension will be used for retrieving,
-                            ## its version is stored
-                            o.env $ file[[ i ]] <-
-                                list(ext = exts,
-                                     version = restorer $ version( exts[ 1L ] ))
+                        if (length( exts ) == 0) {
+                            stop('could not determine the file extension in the storage')
                         }
+                        for (ext in exts) {
+                            ## save function is in [[ 1 ]]
+                            savers[[ ext ]] [[ 1 ]] (
+                                object = o.env $ data.env [[ l ]],
+                                file = file.name(fo, ind, i, ext)
+                            )
+                        }
+                        ## add extensions from file.ext
+                        if (!is.null(file.ext)) exts <- c(exts, file.ext[[ i ]])
+                        ## note, the list `o.env $ file` is unnamed and
+                        ## can only be referenced by numbers. It has the
+                        ## same ordering as `f.env $ links`. This means
+                        ## that in the conventions used throughout the
+                        ## code, its `i.link`-th element corresponds to
+                        ## the `link` in the sense that `link == f.env $
+                        ## links[ i.link ]`
+                        ##
+                        ## First extension will be used for retrieving,
+                        ## its version is stored
+                        o.env $ file[[ i ]] <-
+                            list(ext = exts,
+                                 version = restorer $ version( exts[ 1L ] ))
                     }
                     fs <- file.summary(fo, ind)
                     if (verbose >= 2) {
@@ -1559,12 +1690,10 @@ make.fun.club <- function(dir,
     }
 }
 
-## to do: descsribe by.reference
-##
 ## Note, `fun.club[x]` works, `x` is correctly accepted from `...` and does
 ## not conflict with `x` as another argument. The same is true for
-## `fun.club[by.reference]` and `fun.club[character.only]` if one would ever
-## need to use these names for function objects.
+## `fun.club[character.only]` if one would ever need to use these names for
+## function objects.
 ##
 
 #' Creates function object
@@ -1572,7 +1701,7 @@ make.fun.club <- function(dir,
 #' 
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
-`[<-.fun.club` <- function(x, ..., value, by.reference = FALSE, character.only = FALSE) {
+`[<-.fun.club` <- function(x, ..., value, character.only = FALSE) {
     links <- if (!character.only) {
                  as.character(substitute(list(...))[-1L])
              } else
@@ -1583,7 +1712,7 @@ make.fun.club <- function(dir,
     if ( is.null(value) ) { # delete fun.objects associated to links
         x $ rm.links( links )
     } else {
-        x $ assign.fun.object( links, value, by.reference = by.reference )
+        x $ assign.fun.object( links, value )
     }
     x
 }

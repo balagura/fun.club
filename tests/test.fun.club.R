@@ -12,28 +12,37 @@ fc <- make.fun.club(
     extension.selector = extension.selector,
     savers = savers
 )
-## test transfer of ... and defining several links, letters[4:6] = 'd','e','f'
-fc[letters[4:6], character.only=TRUE] <- function(...) {
+## test transfer of named, positional and ... arguments, and several links
+fc['d','e','f','g', character.only=TRUE] <- function(x=1, y, ...) {
     dots <- list(...)
-    list(..1, ..2 * 2, length(dots))
+    list(..1, ..2 * 2, length(dots), x+y)
 }
 ## dependence on other function objects
-fc[a] <- function(...) {
+fc[a] <- function(z, w=10, ...) {
     dots <- list(...)
-    list(d[...], e[...] * 2, f[...], dots)
+    x <- ..1
+    y <- z
+    list(z=z, w=w, dots=dots[ order(names(dots)) ], d=d[w=w, ...], e=e[...], f=f[...], g=g[...])
 }
 
 test.adef <- function() {
-    stopifnot(identical(f[3,4,5], 3L))
-    arg1 <- c( 9, 19,   9,  19)
-    arg2 <- c(10, 10, 110, 110)
-    for (i in seq_along(arg1)) {
-        x <- arg1[i]
-        y <- arg2[i]
-        stopifnot(identical(a[x,y], list(x, y*4, 2L, list(x, y))))
-    }
+    stopifnot(identical(d[3,4,5,x=10], 4))
+    stopifnot(identical(e[3,4,5,x=10], 10))
+    stopifnot(identical(f[3,4,5,x=10], 2L))
+    stopifnot(identical(g[3,4,5,x=10], 13))
+    ##
+    stopifnot(identical(a[1,2,3,4,5, z=10, x=20],
+    ## in a: z=10, w=1, ... = 2,3,4,5,x=20
+    ## in d[..., w=w]: x=20, y=2, ...=3,4,5,w=1
+    ## in d[w=w, ...]: x=20, y=2, ...= w=1, 3,4,5 -> 1
+    ## in efg[...]: x=20, y=2, ... = 3,4,5 -> 8, 3L, 22
+                        list(z=10, w=1, dots=list(2,3,4,5,x=20),
+                             d=1, e=8, f=3L, g=22)))
+    stopifnot(identical(a[1,2,3,4,5, z=10, x=20],
+                        a[ z=10, 1,  x=20, 2,3,4,5]))
 }
 test.adef()
+
 test.io <- function(extension.selector, savers, restorer,
                     fc) {
     ## example of accessing internalfun.club data
@@ -112,28 +121,88 @@ fc[test] = function(`*tmp*` = 0, x = 0, value = 0) `*tmp*` * x * value
 stopifnot(test[`*tmp*`=1, x=2, value=3] == 6)
 
 
-fc[test.by.ref, by.reference = TRUE] = function(x, output.env) { output.env$test.by.ref = 2*x; x }
-fc[test.by.ref1] = function(x) 2*x
-stopifnot(test.by.ref1 [ 10 ] == test.by.ref [ 10 ])
-fc[test.by.ref, by.reference = FALSE] = function(x, output.env) { output.env$test.by.ref = 2*x; x }
-stopifnot(test.by.ref [ 10, new.env() ] == 10)
+fc[output.env.1] = function(x, output.env) { output.env $ output.env.1 = 2*x; x }
+fc[output.env.2] = function(x) 2*x
+stopifnot(output.env.1 [ 10 ] == output.env.2 [ 10 ])
 
 ## test that x does not conflict with x argument in `[<-.fun.club`
 fc[x]=function(x) 2*x
 stopifnot(x[10] == 20)
-## same for value, by.reference and character.only arguments in `[<-.fun.club`
+
+## same for value and character.only arguments in `[<-.fun.club`
 fc[value]=function(x) x^2
 stopifnot(value[10] == 100)
-fc[by.reference]=function(x) x^2
-stopifnot(by.reference[3] == 9)
-fc[by.reference, by.reference=TRUE]=function(x, output.env) {output.env$by.reference = x^2; 100}
-stopifnot(by.reference[3] == 9)
+##
 fc[character.only, character.only=FALSE]=function(x) x^2
 stopifnot(character.only[3] == 9)
+
 stopifnot( identical(fc[x], function(x) 2*x) )
 stopifnot( identical(fc[value], function(x) x^2) )
-stopifnot( identical(fc[by.reference], function(x, output.env) {output.env$by.reference = x^2; 100}) )
 stopifnot( identical(fc[character.only], function(x) x^2) )
+
+## test file.ext
+fc[a]=function(x, file.ext = 'txt') {
+    print(file.ext)
+    writeLines(as.character(x), con = file.ext)
+    file.ext
+}
+
+a[1:10]
+stored.content <- as.numeric(readLines(a[1:10]))
+stopifnot(1:10 == stored.content)
+
+## more complicated test of file.ext
+fc[a,b]=function(x, file.ext = list(c('txt','gz'),'txt')) {
+    print(file.ext)
+    writeLines(as.character(x), con = file.ext[[ 1 ]][ 1 ])
+    system(paste0('gzip -c ', file.ext[[ 1 ]][ 1 ], ' > ', file.ext[[ 1 ]][ 2 ]))
+    writeLines(as.character(2*x), con = file.ext[[ 2 ]][ 1 ])
+    file.ext # a list
+}
+
+a[1:10]
+stored.content.1 <- as.numeric(readLines(a[1:10][ 1 ]))
+stored.content.1.gz <- as.numeric(readLines(a[1:10][ 2 ]))
+stored.content.2 <- as.numeric(readLines(b[1:10]))
+stopifnot(1:10 == stored.content.1)
+stopifnot(stored.content.1 == stored.content.1.gz)
+stopifnot(stored.content.1 * 2 == stored.content.2)
+
+## test of file.ext supplied by caller
+fc[a,b]=function(x, file.ext) {
+    print(file.ext)
+    writeLines(as.character(x), con = file.ext[[ 1 ]][ 1 ])
+    system(paste0('gzip -c ', file.ext[[ 1 ]][ 1 ], ' > ', file.ext[[ 1 ]][ 2 ]))
+    writeLines(as.character(2*x), con = file.ext[[ 2 ]][ 1 ])
+    file.ext # a list
+}
+
+a[1:10, file.ext = list(c('txt','gz'),'txt')]
+stored.content.1 <- as.numeric(readLines(a[1:10, file.ext = list(c('txt','gz'),'txt')][ 1 ]))
+stored.content.1.gz <- as.numeric(readLines(a[1:10, file.ext = list(c('txt','gz'),'txt')][ 2 ]))
+stored.content.2 <- as.numeric(readLines(b[1:10, file.ext = list(c('txt','gz'),'txt')]))
+stopifnot(1:10 == stored.content.1)
+stopifnot(stored.content.1 == stored.content.1.gz)
+stopifnot(stored.content.1 * 2 == stored.content.2)
+
+## same after reload
+fc[a,b]=function(x, file.ext = list(c('txt','gz'),'txt')) {
+    print(file.ext)
+    writeLines(as.character(x), con = file.ext[[ 1 ]][ 1 ])
+    system(paste0('gzip -c ', file.ext[[ 1 ]][ 1 ], ' > ', file.ext[[ 1 ]][ 2 ]))
+    writeLines(as.character(2*x), con = file.ext[[ 2 ]][ 1 ])
+    file.ext # a list
+}
+
+unload('fc')
+fc <- make.fun.club('test.fun.club')
+a[1:10]
+stored.content.1 <- as.numeric(readLines(a[1:10][ 1 ]))
+stored.content.1.gz <- as.numeric(readLines(a[1:10][ 2 ]))
+stored.content.2 <- as.numeric(readLines(b[1:10]))
+stopifnot(1:10 == stored.content.1)
+stopifnot(stored.content.1 == stored.content.1.gz)
+stopifnot(stored.content.1 * 2 == stored.content.2)
 
 unload('fc')
 unlink('test.fun.club', recursive=TRUE)
