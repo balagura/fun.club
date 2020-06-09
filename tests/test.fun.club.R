@@ -14,14 +14,15 @@ fc <- make.fun.club(
 )
 ## test transfer of named, positional and ... arguments, and several links
 fc['d','e','f','g', character.only=TRUE] <- function(x=1, y, ...) {
+    print(list(...))
     dots <- list(...)
     list(..1, ..2 * 2, length(dots), x+y)
 }
 ## dependence on other function objects
 fc[a] <- function(z, w=10, ...) {
     dots <- list(...)
-    x <- ..1
-    y <- z
+    print(w)
+    print(list(...))
     list(z=z, w=w, dots=dots[ order(names(dots)) ], d=d[w=w, ...], e=e[...], f=f[...], g=g[...])
 }
 
@@ -37,7 +38,7 @@ test.adef <- function() {
     ## in d[w=w, ...]: x=20, y=2, ...= w=1, 3,4,5 -> 1
     ## in efg[...]: x=20, y=2, ... = 3,4,5 -> 8, 3L, 22
                         list(z=10, w=1, dots=list(2,3,4,5,x=20),
-                             d=1, e=8, f=3L, g=22)))
+                             d=3, e=8, f=3L, g=22)))
     stopifnot(identical(a[1,2,3,4,5, z=10, x=20],
                         a[ z=10, 1,  x=20, 2,3,4,5]))
 }
@@ -215,6 +216,10 @@ fc[f7] = function(a, b) f4[a,b] + f5[a,b]
 stopifnot(identical(f7[1,2], 10))
 fc['f1'] = function(x) x^2 # deletes all dependencies
 stopifnot(identical(f7[1,2], 11))
+## check that giving the same arguments by default or explicitly produces the
+## same object
+fc['a'] <- function(x=1, y, ...) { environment() }
+stopifnot(!identical(a[x=1, y=2], a[y=2, z = 3]))
 
 unload('fc')
 unlink('test.fun.club', recursive=TRUE)
