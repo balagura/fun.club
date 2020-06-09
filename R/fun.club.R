@@ -1,3 +1,8 @@
+## TODO:
+## check returning null - seems to cause re-read from disk every time?
+## doc about catching stops / exceptions - this breaks stack, not allowed
+## default func arg=... != ... (positional vs named arg)
+
 #' @name fun.club
 #'
 #' @title fun.club: workflow manager
@@ -74,30 +79,33 @@
 #' _Advanced:_ The way the files are stored on disk is determined by the
 #' `extension.selector` and `savers` arguments in `make.fun.club`
 #' function. Depending on the R object to be saved, the former decides which
-#' file name extension should be chosen and the latter contains the storage
+#' file name extension should be chosen while the latter keeps the storage
 #' function for a given extension. This works fine for saving any R
 #' objects. Sometimes, however, one might need to store files external to
 #' R. Eg. one may want to download remote files to local disk and then process
 #' them in R.  This step may be performed in R, but the files themselves with
-#' the "raw" data may not corresponding to any R object.  Then, it is still
-#' advantageous to have the download algorithms and downloaded files under
-#' control of `fun.club` library. In this case, the files are automatically
-#' deleted if the algorithms change and, on the other hand, only the necessary
-#' files are stored and without duplication.
+#' the "raw" data may not correspond to any R object. Such external data
+#' can not be saved by the default method. It is still advantageous, however,
+#' to keep the download algorithms and downloaded files under control of
+#' `fun.club` library. In this case, the files are automatically deleted if
+#' the algorithms change and, on the other hand, only the necessary files are
+#' stored and without duplication.
 #'
 #' Since the `fun.club` automatic algorithms do not know how to save such
-#' "raw" data, the user can do that her/himself by using the `file.ext`
-#' argument. When calling, `file.ext` should be set to the desired file name
-#' extensions. Then, internally, this argument is expanded to the full
-#' absolute file names with the corresponding extensions, so that in the
-#' function body the user can use them (but without modifying them). The files
-#' will be saved in the same directories where `fun.club` stores other
-#' objects.
+#' "raw" data, this task is transferred to the user who can do that using the
+#' `file.ext` argument. When calling, `file.ext` should be set to the desired
+#' file name extensions. Then, internally, before the function execution, this
+#' argument is expanded to the full absolute file names with the corresponding
+#' extensions. `file.ext` keeping the file names can be used in the function
+#' body (but the user should not modify them). The files will be saved in the
+#' same internal directories where `fun.club` stores other objects.
 #'
 #' The syntax is explained in the following example
 #' ```
-#' fun.club[ write.external.files ] = function(x, file.ext = c("txt", "txt.gz") {
-#'   writeLines(x, file=file.ext[1])
+#' fun.club[ write.external.files ] <-
+#'   function(x, file.ext = c("txt", "txt.gz"))
+#' {
+#'   writeLines(as.character(x), con = file.ext[1])
 #'   system(paste("gzip -c", file.ext[1], ">", file.ext[2]))
 #'   file.ext
 #' }
@@ -114,6 +122,39 @@
 #' <name>.gz depend on its generating function and should be deleted if the
 #' latter (or any function object which it might contain) changes.
 #'
+#' In the example above `file.ext` was given as a default argument, but it can
+#' also be redefined by the caller, eg.
+#' 
+#' ```
+#' write.external.files[1:10, file.ext = c('raw', 'raw.gz')]
+#' ```
+#'
+#' Since the argument combination is different here, this will generate a new
+#' object.
+#' 
+#' If several function objects are defined using one function at once,
+#' `file.ext` should be given as a list of character vectors, one per function
+#' object:
+#'
+#' ```
+#' fun.club[ writer.1, writer.2 ] <-
+#'   function(x, file.ext = list(c("txt", "txt.gz"), "gz"))
+#' {
+#'   writeLines(as.character(x), con = file.ext[[ 1 ]][ 1 ])
+#'   system(paste("gzip -c ", file.ext[[ 1 ]][ 1 ], ">",
+#'                file.ext[[ 1 ]][ 2 ]))
+#'   writeLines(as.character(2*x), con = file.ext[[ 2 ]][ 1 ])
+#'   file.ext
+#' }
+#' ```
+#' 
+#' In this case `file.ext` is expanded to the corresponding list of file
+#' name(s) with one element per function object.  If there is only one
+#' function object, as in the first example, `file.ext` might be alternatively
+#' given as a list with a single element eg. as `list(c("txt",
+#' "txt.gz"))`. Then it would be expanded to the list(c("<name>.txt",
+#' "<name.txt.gz")) instead of the character vector.
+#' 
 #' @examples
 #' ## create `fun.club`: a factory to generate `fun.objects`, ie. special 
 #' ## functions equipped with the capabilities to track and to cache all
@@ -181,7 +222,6 @@
 #' f7[1,2] + f6[3,4]                                                  
 #' 
 #' @docType package
-#' @name fun.club
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #'
 #' @import Rcpp
@@ -1236,29 +1276,6 @@ make.fun.club <- function(dir,
             }
         }
 
-        ## Returns the `list` of evaluated function arguments transferred from
-        ## the caller in `...`. The latter, in turn, can include named,
-        ## positional and `...` arguments. The result is independent of the
-        ## way of transferring the arguments if the resulting argument
-        ## combination is the same. Note that if the arguments with the
-        ## default values do not appear in `...`, they are not included.
-        arg.list <- function(...) {
-            ## `force` evaluates all the arguments (and stops lazy propagation
-            ## without the evaluation)
-            res <- lapply(list(...), force)
-            if (! is.null( names( args ))) {
-                ## sort arguments, so that the order of named arguments
-                ## becomes invariant. Unnamed arguments are placed first and,
-                ## since the sort is stable, their relative order is
-                ## preserved, so they will be at the correct positions.
-                ##
-                ## Side note: `names(list(10,20)) = names(list()) = NULL`
-                ## while `names(list(a=1, 10, 20)) = c('a', '', '')`
-                res <- res[ order(names(args)) ]
-            }
-            res
-        }
-
         ## printable version of the list, eg. for `l = list(a=1, 2)` returns
         ## "a=1, 2"
         print.list <- function(l) {
@@ -1291,6 +1308,40 @@ make.fun.club <- function(dir,
         ## vector of link names
         all.links <- function() list(names = ls(all.names=TRUE, link.env),
                                      envir = envir)
+        
+        ## Returns the `list` of evaluated function arguments which might be
+        ## named, positional and inside `...`. The result is independent of
+        ## the way how the overall combination of args is given (in
+        ## particular, through the default args or explicitly). To achieve
+        ## that, internally a dummy function is called with the same signature
+        ## returning a list of defined objects in its local environment
+        arg.list <- function( ... ) {
+            fo <- link.methods[['fun.object']]
+            f.env <- fun.env[[ fo ]]
+            ## args below returns an empty function with the same signature
+            func <- args( f.env $ fun )
+            body(func) <- quote({
+                ## all explicitly given args appear in the environment of the
+                ## function
+                vars <- as.list(environment())
+                ## add arguments contained in '...'; `force` below evaluates
+                ## all variables
+                if ( exists('...') ) vars <- c(vars, lapply(list(...), force))
+                ## vars can contain unnamed args: positioned inside '...'
+                if (! is.null( names( vars ))) {
+                    ## sort arguments, so that the order of arguments becomes
+                    ## invariant. Unnamed arguments are placed first and,
+                    ## since the sort is stable, their relative order is
+                    ## preserved.
+                    ##
+                    ## Side note: `names(list(10,20)) = names(list()) = NULL`
+                    ## while `names(list(a=1, 10, 20)) = c('a', '', '')`
+                    vars <- vars[ order(names(vars)) ]
+                }
+                vars
+            })
+            func(...)
+        }
 
         ## todo: add docs on C++ fun.club:::add_arg and other C++ funcs
         ## --------------- Functions, "exported" to `fun.link`s ---------------
@@ -1309,10 +1360,11 @@ make.fun.club <- function(dir,
             links <- f.env $ links
             link <- links[ i.link ]
             form <- formals(f.env $ fun)
+            args <- arg.list(...)
             ## output.env and file.ext arguments will be checked later, if the
             ## new object will be generated. If it was generated already, the
-            ## arguments were fine
-            args <- arg.list( ... )
+            ## arguments were fine.
+            ##
             serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
             cArgs <- print.list( args )
             l.name <- paste0(link, '[', cArgs, ']')
@@ -1341,7 +1393,7 @@ make.fun.club <- function(dir,
                     output.env <- !is.null(form[['output.env']])
                     if (output.env) {
                         if (!identical(form[['output.env']], quote(expr=)) || # output.env has default value or
-                            !is.null(args[['output.env']])) {                 # is defined by the caller
+                            !identical(args[['output.env']], quote(expr=))) { # is defined by the caller
                             stop(paste0(
                                 'output.env appearing in the signature of a function is substituted internally by\n',
                                 'the environment where the function object will be stored. This argument must not\n',
@@ -1548,7 +1600,7 @@ make.fun.club <- function(dir,
             fo <- link.methods[['fun.object']]
             i.link <- link.methods[['i.link']]
             f.env <- fun.env[[ fo ]]
-            args <- arg.list( ... )
+            args <- arg.list(...)
             serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
             ind <- ind_arg(arg.encoder, fo, serialized.arg)
             link <- f.env $ links [ i.link ]
@@ -1590,7 +1642,8 @@ make.fun.club <- function(dir,
         ## dependencies
         rm.arguments <- function(...) {
             fo <- link.methods[['fun.object']]
-            args <- arg.list( ... )
+            f.env <- fun.env[[ fo ]]
+            args <- arg.list(...)
             serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
             ind <- ind_arg(arg.encoder, fo, serialized.arg)
             if (ind == 0) {
@@ -1768,7 +1821,7 @@ unload <- function(fun.club.name) {
 #' case, if by chance the function object uses the same argument name `fo` or
 #' `i.link`, and one calls eg. `link[a=1, b=2, fo=3]`, then this argument `fo
 #' = 3` will be in conflict with the argument for the function object name. To
-#' avoid this situation, all functions receiving arguments through `...`,
+#' avoid that, all functions receiving arguments through `...`,
 #' ie. `link.methods` and also `arg.list(...)`, do not receive anything else
 #' except `...`, while the function object and the link number are propagated
 #' externally via `link.methods[['fun.object']]` and
