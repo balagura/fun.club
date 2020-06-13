@@ -588,11 +588,13 @@ make.fun.club <- function(dir,
                 t[[ fo ]] <- t[[ fo ]][ t[[ fo ]] != ind ]
                 if (length(t[[ fo ]]) == 0) rm(list = fo, envir = t) # clean up
             }
-            add.target <- function(fo, ind) {
+            check.cyclic.dependence <- function(fo, ind) {
                 if (ind %in% t[[ fo ]]) {
                     ## break cyclic dependence like A->B->C->A
                     stop('Recursive call ', obj.name(fo, ind))
                 }
+            }
+            add.target <- function(fo, ind) {
                 if (exists(fo, envir = t, inherits = FALSE)) {
                     t[[ fo ]] <- c(t[[ fo ]], ind)
                 } else {
@@ -646,7 +648,10 @@ make.fun.club <- function(dir,
             }
             ## `x` argument should be a character vector:
             add.to.top <- function(x) s[[ 1L ]] <<- c(s[[ 1L ]], list(x))
-            clear      <- function()  s <<- list()
+            clear      <- function()  {
+                s <<- list()
+                rm(list = ls(all.names = TRUE, t), envir = t)
+            }
             to.char    <- function()  {
                 . <- sapply(seq_along(s),
                             function(i) {
@@ -657,7 +662,8 @@ make.fun.club <- function(dir,
             ##
             list(len = len, rm.target = rm.target, add.target = add.target,
                  unique.top = unique.top, add.to.top = add.to.top,
-                 clear = clear, to.char = to.char)
+                 clear = clear, to.char = to.char,
+                 check.cyclic.dependence = check.cyclic.dependence)
         }
         stack <- make.stack()
         
@@ -1464,12 +1470,12 @@ make.fun.club <- function(dir,
             ind <- add_arg(arg.encoder, fo, serialized.arg, cArgs)
             new <-               ind[['new']]
             ind <- as.character( ind[['i']] )
+            ## check that (fo,ind) is not being generated (not among existing
+            ## targets), otherwise stop() and break cyclic dependence
+            stack $ check.cyclic.dependence(fo, ind)
             fo.ind <- c(fo, ind)
             o.name <- obj.name(fo, ind)
             if (new) {
-                ## the following checks that fo,ind is not being generated
-                ## (not among existing targets), otherwise it stop()'s and
-                ## breaks cyclic dependence
                 stack $ add.target(fo, ind)
                 if (verbose >=2) {
                     if (indent == '') {
