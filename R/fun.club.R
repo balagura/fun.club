@@ -569,17 +569,37 @@ make.fun.club <- function(dir,
             if (length(s) == 2) restorer $ add( ext, s[[ 2 ]] )
         }
         make.stack <- function() {
-            ## s will be a list of lists of character vectors
-            ## s[[1]] will be populated with parents after each function call like:
-            ## s[[1]][[ i ]] = c(n.args, fo, Xs...)
+            ## s will be a list of lists of character vectors s[[1]] will be
+            ## populated with parents after each function call like:
+            ## s[[1]][[ i ]] = c(fo, ind)
             ##
-            ## s[[2]], s[[3]], ... contain next recursion levels (as calculation
-            ## of fun.objects can be nested: A can use B which uses C etc.)
+            ## s[[2]], s[[3]], ... contain next recursion levels (as
+            ## calculation of fun.objects can be nested: A can use B which
+            ## uses C etc.)
             s <- list()
             len        <- function()  length( s )
-            pop        <- function()  s <<- s[-1L]
-            ## `x` argument should be a list of character vectors:
-            push       <- function(x) s <<- c(list(x), s)
+            ## list of currently being generated objects or "targets" (eg. if
+            ## one requests C with the dependence A->B->C, it will be
+            ## populated by C, then C,B and then C,B,A). Targets with fo,
+            ## ind1, ind2, ... are coded at t[[fo]] = c(ind1, ind2, ...)
+            t <- new.env( parent = emptyenv() )
+            rm.target  <- function(fo, ind)  { # fo.ind = c(fo, ind)
+                s <<- s[-1L]
+                t[[ fo ]] <- t[[ fo ]][ t[[ fo ]] != ind ]
+                if (length(t[[ fo ]]) == 0) rm(list = fo, envir = t) # clean up
+            }
+            add.target <- function(fo, ind) {
+                if (ind %in% t[[ fo ]]) {
+                    ## break cyclic dependence like A->B->C->A
+                    stop('Recursive call ', obj.name(fo, ind))
+                }
+                if (exists(fo, envir = t, inherits = FALSE)) {
+                    t[[ fo ]] <- c(t[[ fo ]], ind)
+                } else {
+                    t[[ fo ]] <- ind
+                }
+                s <<- c(list(list()), s)
+            }
             ## unique is needed as one object can be used >1 times in
             ## generation
             ##
@@ -634,8 +654,10 @@ make.fun.club <- function(dir,
                             })
                 paste0(., collapse=' ')
             }
-            list(len = len, pop = pop, push = push, unique.top = unique.top,
-                 add.to.top = add.to.top, clear = clear, to.char = to.char)
+            ##
+            list(len = len, rm.target = rm.target, add.target = add.target,
+                 unique.top = unique.top, add.to.top = add.to.top,
+                 clear = clear, to.char = to.char)
         }
         stack <- make.stack()
         
@@ -681,7 +703,7 @@ make.fun.club <- function(dir,
                 ## many). `stack` is implemented as an environment of the
                 ## function containing list-of-lists-of pairs (function object
                 ## name - unique identifier of the arguments). It also
-                ## contains typical stack functions len(), pop(), push(),
+                ## contains stack functions len(), rm.target(), add.target(),
                 ## clear(), add.to.top(), unique.top(), to.char() which are
                 ## only used to operate the `stack`.
                ,'stack'
@@ -1344,15 +1366,84 @@ make.fun.club <- function(dir,
         }
 
         ## todo: add docs on C++ fun.club:::add_arg and other C++ funcs
-        ## --------------- Functions, "exported" to `fun.link`s ---------------
-        set.link <- function(link) {
+        save.on.exit <- function(e) {
+            ## check whether `save.on.exit()` was already called: in this case
+            ## `file` is already removed, then no need to save.  This happens
+            ## when save.on.exit() is called from `unload()` via `save()`.
+            ##
+            if (!exists('file', envir = e, inherits = FALSE) ) return(NULL)
+            ## `unload` should save immediately, as the file might be read
+            ## back already by the next command. Therefore one can not just
+            ## remove `fun.club` object and rely on the garbage collector to
+            ## call `save.on.exit`, this can be delayed. So, `unload` calls
+            ## `save.on.exit` directly (via `save()`), and then gc calls it
+            ## for the 2nd time. It seems I can not unregister this function
+            ## after it is registered by reg.finalizer (can only re-register,
+            ## ie. substitute it by another empty function, which is
+            ## approximately equivalent to `return(NULL)` above).
+            if (e $ verbose >= 2) {
+                message('saving fun.objects ',
+                        paste0(e$fun.names( ls(all.names=TRUE, e$fun.env) ),
+                               collapse=', '),
+                        ' to ', e$file)
+            }
+            ## do not save objects as they are already saved on disk, free
+            ## memory and set them to NULL
+            for (fo in ls(all.names = TRUE, e$fun.env)) {
+                f.env <- e$fun.env[[ fo ]]
+                all <- ls(all.names=TRUE, f.env)
+                for (ind in grep('^[0-9]+$', all, value=TRUE)) {
+                    d.env <- f.env[[ ind ]] [['data.env']]
+                    for (l in ls(all.names=TRUE, d.env)) {
+                        d.env[[ l ]] <- NULL
+                    }
+                }
+            }
+            ## `file` below is used only here, it is fixed as
+            ## `dir`/fun.club.rds.  It will be deleted in environment `e`
+            ## but a copy will be saved in the `environment()` of this
+            ## function, so that `saveRDS()` knows where to save `fun.club`:
+            f <- e$file
+            ## do not save `make.fun.club()` function arguments. When
+            ## reloaded, the new, potentially different arguments could be
+            ## assigned
+            rm( dir, file, envir, extension.selector, savers, verbose,
+               envir = e )
+            ##
+            ## save C++ arg encoder which associates function arguments to
+            ## unique integers. For that, dump C++ encoder to R
+            ## list-of-lists-of (string - integer) pairs and save it under the
+            ## same name `arg.encoder`
+            e$arg.encoder <- dump_arg( e$arg.encoder )
+            ## note, the full environment is saved, not `methods` as returned
+            ## by `make.fun.club`
+            saveRDS( e, file = f)
+        }
+        reg.finalizer(environment(), onexit = TRUE, f = save.on.exit)
+
+        save <- function() save.on.exit( parent.env( environment()))
+
+        ## ------------- link.methods "exported" to `fun.link`s -------------
+        ##
+        ## one could store the functions in a list, but here an environment is
+        ## chosen instead of the list simply because then the functions are
+        ## not shown by `str(some.link)`. In addition, note that contrary to
+        ## lists there is no partial matching for environments in expressions
+        ## with `$`, like 'env $ name`. For lists instead of `$` (where `list
+        ## $ abcdef` can be shortened to `list $ ab` if there is no ambiguity
+        ## with the shorter form `ab`), I preferably use `[[` which have no
+        ## partial matching by default (and could be a little faster).
+        ##
+        link.methods <- new.env( parent = emptyenv() )
+        link.methods[[ 'set.link' ]] <- function(link) {
             link.methods[['fun.object']] <<- link[['fun.object']]
             link.methods[['i.link']]     <<- link[['i']]
         }
+
         ## returns the `i.link`-th element of the list object generated by
         ## common function `fo` using `...` as arguments. Retrieve it from
         ## disk if it is not in memory or generate if not on disk.
-        generate <- function( ... ) {
+        link.methods[[ 'generate' ]] <- function( ... ) {
             fo <- link.methods[['fun.object']]
             i.link <- link.methods[['i.link']]
             ##
@@ -1376,7 +1467,10 @@ make.fun.club <- function(dir,
             fo.ind <- c(fo, ind)
             o.name <- obj.name(fo, ind)
             if (new) {
-                stack $ push( list() )
+                ## the following checks that fo,ind is not being generated
+                ## (not among existing targets), otherwise it stop()'s and
+                ## breaks cyclic dependence
+                stack $ add.target(fo, ind)
                 if (verbose >=2) {
                     if (indent == '') {
                         message(indent, 'generating ', o.name)
@@ -1549,7 +1643,7 @@ make.fun.club <- function(dir,
                                     paste0(' and stored to ', fs)
                                 })
                     }
-                    stack $ pop()
+                    stack $ rm.target(fo, ind)
                     ## delete the information on parents from the stack top
                     ## only in the very end, as it might be needed to remove
                     ## links in case of error
@@ -1596,7 +1690,7 @@ make.fun.club <- function(dir,
         }
 
         ## assign NULL to object in memory but keep it on disk
-        rm.arguments.from.memory <- function(...) {
+        link.methods[[ 'rm.arguments.from.memory' ]] <- function(...) {
             fo <- link.methods[['fun.object']]
             i.link <- link.methods[['i.link']]
             f.env <- fun.env[[ fo ]]
@@ -1630,17 +1724,9 @@ make.fun.club <- function(dir,
             }
         }
 
-        ## print function for `print.fun.link()`
-        print.fun <- function(fo, i.link) {
-            f.env <- fun.env[[ fo ]]
-            print(f.env $ fun)
-            if (length( f.env[['links']] ) > 1)
-                print(paste0('[[', i.link, ']]'))
-        }
-        
         ## delete object generated by `fo` with arguments in `...` and all
         ## dependencies
-        rm.arguments <- function(...) {
+        link.methods[[ 'rm.arguments' ]] <- function(...) {
             fo <- link.methods[['fun.object']]
             f.env <- fun.env[[ fo ]]
             args <- arg.list(...)
@@ -1653,81 +1739,16 @@ make.fun.club <- function(dir,
                 rm.generated(fo, as.character(ind))
             }
         }
-        
-        save.on.exit <- function(e) {
-            ## check whether `save.on.exit()` was already called: in this case
-            ## `file` is already removed, then no need to save.  This happens
-            ## when save.on.exit() is called from `unload()` via `save()`.
-            ##
-            if (!exists('file', envir = e, inherits = FALSE) ) return(NULL)
-            ## `unload` should save immediately, as the file might be read
-            ## back already by the next command. Therefore one can not just
-            ## remove `fun.club` object and rely on the garbage collector to
-            ## call `save.on.exit`, this can be delayed. So, `unload` calls
-            ## `save.on.exit` directly (via `save()`), and then gc calls it
-            ## for the 2nd time. It seems I can not unregister this function
-            ## after it is registered by reg.finalizer (can only re-register,
-            ## ie. substitute it by another empty function, which is
-            ## approximately equivalent to `return(NULL)` above).
-            if (e $ verbose >= 2) {
-                message('saving fun.objects ',
-                        paste0(e$fun.names( ls(all.names=TRUE, e$fun.env) ),
-                               collapse=', '),
-                        ' to ', e$file)
-            }
-            ## do not save objects as they are already saved on disk, free
-            ## memory and set them to NULL
-            for (fo in ls(all.names = TRUE, e$fun.env)) {
-                f.env <- e$fun.env[[ fo ]]
-                all <- ls(all.names=TRUE, f.env)
-                for (ind in grep('^[0-9]+$', all, value=TRUE)) {
-                    d.env <- f.env[[ ind ]] [['data.env']]
-                    for (l in ls(all.names=TRUE, d.env)) {
-                        d.env[[ l ]] <- NULL
-                    }
-                }
-            }
-            ## `file` below is used only here, it is fixed as
-            ## `dir`/fun.club.rds.  It will be deleted in environment `e`
-            ## but a copy will be saved in the `environment()` of this
-            ## function, so that `saveRDS()` knows where to save `fun.club`:
-            f <- e$file
-            ## do not save `make.fun.club()` function arguments. When
-            ## reloaded, the new, potentially different arguments could be
-            ## assigned
-            rm( dir, file, envir, extension.selector, savers, verbose,
-               envir = e )
-            ##
-            ## save C++ arg encoder which associates function arguments to
-            ## unique integers. For that, dump C++ encoder to R
-            ## list-of-lists-of (string - integer) pairs and save it under the
-            ## same name `arg.encoder`
-            e$arg.encoder <- dump_arg( e$arg.encoder )
-            ## note, the full environment is saved, not `methods` as returned
-            ## by `make.fun.club`
-            saveRDS( e, file = f)
+
+        ## print function for `print.fun.link()`
+        link.methods[[ 'print.fun' ]] <- function(fo, i.link) {
+            f.env <- fun.env[[ fo ]]
+            print(f.env $ fun)
+            if (length( f.env[['links']] ) > 1)
+                print(paste0('[[', i.link, ']]'))
         }
-        reg.finalizer(environment(), onexit = TRUE, f = save.on.exit)
-
-        save <- function() save.on.exit( parent.env( environment()))
-        ##
-        ## link.methods are propagated to created links
-        ##
-        ## one could store the functions in a list, but here an environment is
-        ## chosen instead of the list simply because then the functions are
-        ## not shown by `str(some.link)`. In addition, note that contrary to
-        ## lists there is not partial matching for environments in expressions
-        ## with `$`, like 'env $ name`. For lists instead of `$` (where `list
-        ## $ abcdef` can be shortened to `list $ ab` if there is no ambiguity
-        ## with the shorter form `ab`), I preferably use `[[` which have no
-        ## partial matching by default (and could be a little faster).
-        link.methods <- new.env( parent = emptyenv() )
-        link.methods[[ 'set.link' ]]                 <- set.link
-        link.methods[[ 'generate' ]]                 <- generate
-        link.methods[[ 'rm.arguments.from.memory' ]] <- rm.arguments.from.memory
-        link.methods[[ 'rm.arguments' ]]             <- rm.arguments
-        link.methods[[ 'print.fun' ]]                <- print.fun
-
+        ## ---------- End of link.methods ----------
+        
         ## `methods` environment is returned
         ##
         methods <- new.env( parent = emptyenv() )
