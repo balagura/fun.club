@@ -1,11 +1,7 @@
-## TODO:
-## check returning null - seems to cause re-read from disk every time?
-## doc about catching stops / exceptions - this breaks stack, not allowed
-## default func arg=... != ... (positional vs named arg)
-
 #' @name fun.club
 #'
-#' @title fun.club: workflow manager
+#' @title
+#' fun.club: workflow manager
 #' 
 #' @description This is a workflow manager which controls the generation of R
 #'     objects, their caching in memory and storing on disk. It automatically
@@ -228,18 +224,27 @@
 #' @useDynLib fun.club
 NULL  
 
-#' to do: technicalities:
-#' 1) "normalization" of args, serialization and -> int
-#' 2) fo names: All variable names are limited in R to 10000 bytes
-#' (and were to 256 bytes in versions of R before 2.13.0, see
-#' ?name). Therefore, as arguments one can use anything convertible with
-#' as.character() to not more than 10000 bytes, and only that.
-#' 3) separate envir's to keep names arbitrary
-#' 4) escape hatch via char.only - rethink
-#' 5) links can be destroyed and recreated - func for that?
-#' 6) one can have several fc if all of them point to different directories
-#' 7) *tmp* and value  in '['
-#' 
+# Let data.table know that `[.data.table` should be called instead of
+# `[.data.frame`
+.datatable.aware = TRUE
+
+## to do: technicalities:
+## 1) "normalization" of args, serialization and -> int
+## 2) fo names: All variable names are limited in R to 10000 bytes
+## (and were to 256 bytes in versions of R before 2.13.0, see
+## ?name). Therefore, as arguments one can use anything convertible with
+## as.character() to not more than 10000 bytes, and only that.
+## 3) separate envir's to keep names arbitrary
+## 4) escape hatch via char.only - rethink
+## 5) links can be destroyed and recreated - func for that?
+## 6) one can have several fc if all of them point to different directories
+## 7) *tmp* and value  in '['
+## 
+
+## TODO:
+## check returning null - seems to cause re-read from disk every time?
+## doc about catching stops / exceptions - this breaks stack, not allowed
+## default func arg=... != ... (positional vs named arg)
 
 ## to do: wish list:
 ## 1) API to check that object is in memory
@@ -250,9 +255,10 @@ NULL
 ## to do: ?make.fun.club - saving args are unreadable; fst requires
 ## library(fst), can be dropped
 
-#' Workflow manager
+#' @title
+#' Creates fun.club workflow manager
 #'
-#' This function creates the workflow manager of the class `fun.club` which
+#' @description This function creates the workflow manager of the class `fun.club` which
 #' can be used to create fun.objects as described in `help('[<-.fun.club')`.
 #' The workflow will be automatically saved in `file`. If `file` already
 #' exists when the workflow is created, its content will be read to ...
@@ -323,7 +329,7 @@ make.fun.club <- function(dir,
                                                      is.atomic ) == TRUE ) &&
                                          ## `write_fst` can not store empty
                                          ## tables
-                                         nrow( object ) > 0) {
+                                         nrow( object ) > 0L) {
                                   'fst'
                               } else if ('connection' %in% class(object)) {
                                   'raw'
@@ -377,7 +383,7 @@ make.fun.club <- function(dir,
                           verbose = 2) {
     if (! file.exists( dir )) {
         if (! dir.create(dir, recursive = TRUE) ) {
-            stop('Can not create directory ',dir)
+            stop('Can not create directory ',dir, call. = FALSE)
         } else {
             dir <- normalizePath(dir)
             if (verbose >= 2) message(dir, ' is created')
@@ -500,7 +506,7 @@ make.fun.club <- function(dir,
                 subdir <- file.path(dir, ext)
                 if (! file.exists( subdir )) {
                     if (! dir.create(subdir, recursive = TRUE) ) {
-                        stop('Can not create subdirectory ',subdir)
+                        stop('Can not create subdirectory ',subdir, call. = FALSE)
                     } else new.exts <- c(new.exts, ext)
                 }
             }
@@ -569,16 +575,16 @@ make.fun.club <- function(dir,
             if (length(s) == 2) restorer $ add( ext, s[[ 2 ]] )
         }
         make.stack <- function() {
-            ## s will be a list of lists of character vectors s[[1]] will be
+            ## s will be a list of lists of character vectors, s[[1]] will be
             ## populated with parents after each function call like:
             ## s[[1]][[ i ]] = c(fo, ind)
             ##
-            ## s[[2]], s[[3]], ... contain next recursion levels (as
+            ## s[[2]], s[[3]], ... will contain next recursion levels (as
             ## calculation of fun.objects can be nested: A can use B which
             ## uses C etc.)
             s <- list()
-            len        <- function()  length( s )
-            ## list of currently being generated objects or "targets" (eg. if
+            len <- function() length( s )
+            ## environment of currently being generated objects or "targets" (eg. if
             ## one requests C with the dependence A->B->C, it will be
             ## populated by C, then C,B and then C,B,A). Targets with fo,
             ## ind1, ind2, ... are coded at t[[fo]] = c(ind1, ind2, ...)
@@ -591,7 +597,7 @@ make.fun.club <- function(dir,
             check.cyclic.dependence <- function(fo, ind) {
                 if (ind %in% t[[ fo ]]) {
                     ## break cyclic dependence like A->B->C->A
-                    stop('Recursive call ', obj.name(fo, ind))
+                    stop('Recursive call ', obj.name(fo, ind), call. = FALSE)
                 }
             }
             add.target <- function(fo, ind) {
@@ -666,6 +672,93 @@ make.fun.club <- function(dir,
                  check.cyclic.dependence = check.cyclic.dependence)
         }
         stack <- make.stack()
+
+        make.viewer <- function() {
+            ## dt will be a data.table representing dependencies of all
+            ## fun.club objects
+            dt <- NULL
+            clear <- function() dt <<- NULL
+            create  <- function(as = c('data.table', 'detailed.data.table')) {
+                as <- as[1]
+                if (as %in% c('data.table', 'detailed.data.table')) {
+                    ## return the data.table representing fun.objects
+                    ## dependency tree either in short (only `from`, `to`
+                    ## columns) or full (with exact arguments) formats
+                    if (!requireNamespace('data.table', quietly = TRUE)) {
+                        stop('data.table package is required for this function but not installed',
+                             call. = FALSE)
+                    }
+                    if (is.null( dt )) {
+                        . <- data.table(fo = ls(all.names=TRUE, fun.env)
+                                        )[, list(ind = grep('[0-9]+', ls(all.names=TRUE, fun.env[[ fo ]]),
+                                                            value=TRUE)), by=fo]
+                        ## form dependency data.tables separately from children and parents and compare
+                        children <- .[, {
+                            fo.ind <- fun.env[[ fo ]] [[ ind ]] $ children
+                            fo.ind <-
+                                matrix(                  # group fo, ind to matrix rows;
+                                    as.character(        # if fo.ind is an empty list(): unlist(list()) returns NULL
+                                        unlist(fo.ind)), # not acceptable by matrix(), so convert explicitly to
+                                    nrow=2L)             # character(0) by as.character()
+                            list(to.fo  =   fo.ind[1,],  # matrix(character(0),nrow=2)[1,] returns character(0)
+                                 to.ind = as.integer(fo.ind[2,])) # as.integer(character(0)) is integer(0)
+                        }, by=.(from.fo = fo, from.ind = as.integer(ind))]
+                        parents <- .[, {
+                            fo.ind <- fun.env[[ fo ]] [[ ind ]] $ parents
+                            fo.ind <-
+                                matrix(                  # group fo, ind to matrix rows;
+                                    as.character(        # if fo.ind is an empty list(): unlist(list()) returns NULL
+                                        unlist(fo.ind)), # not acceptable by matrix(), so convert explicitly to 
+                                    nrow=2L)             # character(0) by as.character()
+                            list(from.fo  = fo.ind[1,],  # matrix(character(0),nrow=2)[1,] returns character(0)
+                                 from.ind = as.integer(fo.ind[2,])) # as.integer(character(0)) is integer(0)
+                        }, by=.(to.fo = fo, to.ind = as.integer(ind))]
+                        setkey(children, from.fo, from.ind, to.fo, to.ind)
+                        setkey(parents, from.fo, from.ind, to.fo, to.ind)
+                        if (! identical(parents[,names(children), with=FALSE], children))
+                            stop('Internal error: dependency trees reconstructed from children ',
+                                 'and parents fields differ', call. = FALSE)
+                        dt <<- children
+                        dt[,from.links := list(list(fun.env[[ from.fo ]][[ 'links' ]])), by=from.fo]
+                        dt[,to.links   := list(list(fun.env[[ to.fo   ]][[ 'links' ]])), by=to.fo]
+                        dt[, from.exact.arg := # exact arguments from serialized strings
+                                 list(list(unserialize(charToRaw(
+                                     fun.club:::serialized_arg(arg.encoder, from.fo, from.ind)
+                                 )))), by=.(from.fo, from.ind)]
+                        dt[, to.exact.arg :=
+                                 list(list(unserialize(charToRaw(
+                                     fun.club:::serialized_arg(arg.encoder, to.fo, to.ind)
+                                 )))), by=.(to.fo, to.ind)]
+                        ## "human-readable", not necessarily unique character representations of arguments
+                        dt[, from.printed.arg := fun.club:::printable_arg(arg.encoder, from.fo, from.ind),
+                           by=.(from.fo, from.ind)]
+                        dt[, to.printed.arg   := fun.club:::printable_arg(arg.encoder, to.fo,   to.ind),
+                           by=.(to.fo,   to.ind)]
+                        ## fun[args] or {fun1,fun2}[args] character strings
+                        dt[, from := ifelse
+                        (length(from.links[[ 1 ]])==1,
+                            paste0(            from.links[[ 1 ]],                 '[', from.printed.arg, ']'),
+                            paste0('{', paste0(from.links[[ 1 ]], collapse=','), '}[', from.printed.arg, ']')),
+                        by=.(from.fo, from.ind)]
+                        dt[, to := ifelse
+                        (length(to.links[[ 1 ]])==1,
+                            paste0(            to.links[[ 1 ]],                 '[', to.printed.arg, ']'),
+                            paste0('{', paste0(to.links[[ 1 ]], collapse=','), '}[', to.printed.arg, ']')),
+                        by=.(to.fo,   to.ind)]
+                    }
+                    if (as == 'data.table') {
+                        dt[, list(from, to)]
+                    } else if (as == 'detailed.data.table') {
+                        dt[,list(from.links, from.ind, from.printed.arg, from.exact.arg,
+                                 to.links, to.ind, to.printed.arg, to.exact.arg)]
+                    }
+                } else {
+                    stop(as, ' argument is not recognized', call. = FALSE)
+                }
+            }
+            list(clear = clear, create = create)
+        }
+        viewer <- make.viewer()
         
         clean.env <- function(fun.club.env) {
             not.func <- Filter(function(n) !is.function(fun.club.env[[ n ]]),
@@ -884,6 +977,11 @@ make.fun.club <- function(dir,
                 ## operators (`[.fun.club` and `[<-.fun.club`) outside of
                 ## `make.fun.club` function.
                ,'methods'
+                ## `viewer$create()` returns a representation of fun.club
+                ## dependency tree. Internally, it keeps the snapshot which is
+                ## viewer$clear()ed after any fun.club modification and then
+                ## recreated after `viewer$create()`
+                ,'viewer'
             )
             delete <- setdiff(not.func, keep)
             rm(list = delete, envir = fun.club.env)
@@ -1081,6 +1179,11 @@ make.fun.club <- function(dir,
         rm.fun.objects <- function(fos) {
             ## assumes all fun.objects in fos exist
             deleted <- rebinded <- character(0)
+            ## the viewer should be clean()'ed only if any function in fos was
+            ## called and at least one object was generated. Checking it
+            ## requires traversing the tree. For simplicity, here clear() is
+            ## called always without checking.
+            if (length(fos) > 0) viewer $ clear()
             for (fo in fos) {
                 if (verbose >= 1) message('deleting ', fun.names( fo ))
                 ## check before deletion whether all fun.link's in userspace
@@ -1137,7 +1240,7 @@ make.fun.club <- function(dir,
         ## deleted with `warning()`s.
         assign.fun.object <- function(links, fun) {
             if (length( links ) > length( unique(links) ))
-                stop('Link names must be unique')
+                stop('Link names must be unique', call. = FALSE)
             fos <- linked.funs( intersect( links, ls(all.names=TRUE, link.env) ))
             fos.print <- fun.names( fos )
             ## check whether one just needs to update fun
@@ -1242,7 +1345,7 @@ make.fun.club <- function(dir,
             ## `parents` is not NULL, the object should always exist.
             if (!exists(ind, envir = f.env, inherits = FALSE)) {
                 if (is.null(parents))
-                    stop('Internal error: ', o.name, ' does not exist')
+                    stop('Internal error: ', o.name, ' does not exist', call. = FALSE)
             } else {
                 e <- f.env[[ ind ]]
                 ## delete dependencies
@@ -1476,6 +1579,18 @@ make.fun.club <- function(dir,
             fo.ind <- c(fo, ind)
             o.name <- obj.name(fo, ind)
             if (new) {
+                ## an object is going to be created in the dependency tree,
+                ## so require viewer update by
+                if (stack $ len() == 0) viewer $ clear()
+                ## `generate` can recursively call generation of other
+                ## objects, so `viewer $ clear()` is called above only for the
+                ## stack top-level object.
+                ##
+                ## If creation of this object fails and no other objects were
+                ## created recursively on the way, the dependency tree remains
+                ## unmodified. For simplicity, `viewer $ clear()` is called
+                ## nevertheless, without checking that.
+                ##
                 stack $ add.target(fo, ind)
                 if (verbose >=2) {
                     if (indent == '') {
@@ -1499,7 +1614,7 @@ make.fun.club <- function(dir,
                                 'the environment where the function object will be stored. This argument must not\n',
                                 'have a default value. When called, it must be missing.\n',
                                 'Eg. fun.club["f"] = function(x, output.env) {output.env[["f"]] <- x}; f[1]'
-                            ))
+                            ), call. = FALSE)
                         }
                     }
                     file.ext <- args[['file.ext']] # start from args, if file.ext is there but not in signature,
@@ -1515,7 +1630,7 @@ make.fun.club <- function(dir,
                             ## quote(expr=)`, but its evaluation (just `x`)
                             ## produces a cryptic error `argument "x" is
                             ## missing, with no default`.
-                            stop('If function receives file.ext argument, it must be defined')
+                            stop('If function receives file.ext argument, it must be defined', call. = FALSE)
                         }
                         file.ext <- eval(file.ext) # evaluate, otherwise its  `typeof()` is `language`
                     }            
@@ -1529,7 +1644,7 @@ make.fun.club <- function(dir,
                             stop(paste0(
                                 'file.ext must be a list of character vectors, one per function object. If there is\n',
                                 'only one function object, it may also be a character vector.'
-                            ))
+                            ), call. = FALSE)
                         }
                         ## file.ext is a list of character vectors with length 1 or more, or
                         ## just one character vector or NULL 
@@ -1563,7 +1678,8 @@ make.fun.club <- function(dir,
                                      '` in the environment given by the function ',
                                      'argument `output.env` like `output.env$',
                                      links [ length(links) ],
-                                     ' = ...`.')
+                                     ' = ...`.',
+                                     call. = FALSE)
                             }
                         }
                     } else {
@@ -1582,7 +1698,8 @@ make.fun.club <- function(dir,
                                 stop(indent, 'The result of ',o.name,
                                      ' must be a list of length ', n.links,
                                      ' according to a number of given names in ',
-                                     fun.names( fo ))
+                                     fun.names( fo ),
+                                     call. = FALSE)
                             } else {
                                 for (i in seq_along(res)) {
                                     l <- links[[ i ]]
@@ -1614,7 +1731,7 @@ make.fun.club <- function(dir,
                         l <- links[ i ]
                         exts <- extension.selector( o.env $ data.env [[ l ]] )
                         if (length( exts ) == 0) {
-                            stop('could not determine the file extension in the storage')
+                            stop('could not determine the file extension in the storage', call. = FALSE)
                         }
                         for (ext in exts) {
                             ## save function is in [[ 1 ]]
@@ -1658,16 +1775,17 @@ make.fun.club <- function(dir,
                     ## clean in case something was created
                     rm.generated(fo, ind, indent = indent,
                                  parents = stack $ unique.top())
-                    stack $ clear()   # reset,
-                    stop( e )         # break recursion and propagate stop() to top
+                    stack $ clear()           # reset,
+                    stop( e, call. = FALSE )  # break recursion and propagate stop() to top
                 }, interrupt = function( e ) { # callback for interrupt
                     ## clean in case something was created
                     rm.generated(fo, ind, indent = indent,
                                  parents = stack $ unique.top())
                     stack $ clear() # reset, break recursion and propagate stop()
                     ## in case of interrupt, stop with the text, not `e` as it
-                    ## was for error above
-                    stop( indent, 'Generation of ',o.name,' was interrupted' ) # to top
+                    ## was for the error above
+                    stop( indent, 'Generation of ',o.name,' was interrupted',
+                         call. = FALSE )
                 })
             } else {
                 o.env <- f.env [[ ind ]]
@@ -1740,8 +1858,12 @@ make.fun.club <- function(dir,
             ind <- ind_arg(arg.encoder, fo, serialized.arg)
             if (ind == 0) {
                 cArgs <- print.list( args )
-                stop('The object ', fun.names(fo), '[', cArgs, ']', ' is not found')
+                stop('The object ', fun.names(fo), '[', cArgs, ']', ' is not found', call. = FALSE)
             } else {
+                ## an object is going to be deleted from the dependency tree,
+                ## so require viewer update by
+                viewer $ clear()
+                ##
                 rm.generated(fo, as.character(ind))
             }
         }
@@ -1759,11 +1881,26 @@ make.fun.club <- function(dir,
         ##
         methods <- new.env( parent = emptyenv() )
         methods[[ 'all.links' ]]                           <- all.links
+        ## Among all `methods` functions, only the next and the following
+        ## functions are able to modify the dependency tree represented by
+        ## `viewer`. This can happen only after object deletion(s), as adding
+        ## new function without an object do not create a new entry in the
+        ## tree. For the deletion, both functions call `rm.fun.objects()`, so
+        ## `viewer$clear()` is placed only there. After `viewer$clear()`, the
+        ## next call `viewer$create()` regenerates an updated dependency tree.
+        ##
+        ## Note, `viewer$clear()` is also called from the `link.methods`
+        ## functions `generate()` and `rm.arguments()` creating and deleting a
+        ## particular object, respectively. No other function can modify the
+        ## dependency tree, so these are the only places where
+        ## `viewer$clear()` is called.
         methods[[ 'rm.links' ]]                            <- rm.links
         methods[[ 'assign.fun.object' ]]                   <- assign.fun.object
+        ##
         methods[[ 'check.fun.links.and.return.function' ]] <-
             check.fun.links.and.return.function
         methods[[ 'save' ]]                                <- save
+        methods[[ 'view.as' ]] <- function(as = c('data.table', 'detailed.data.table')) viewer $ create( as = as )
 
         clean.env( environment())
         return( structure(class = 'fun.club', methods) )
@@ -1776,8 +1913,10 @@ make.fun.club <- function(dir,
 ## function objects.
 ##
 
-#' Creates function object
-#' 
+#' @title
+#' Defines generating function in fun.club
+#'
+#' @description Defines generating function in fun.club
 #' 
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
@@ -1797,7 +1936,11 @@ make.fun.club <- function(dir,
     x
 }
 
+#' @title
 #' Unloads `fun.club` from memory in the same way as when quitting R session
+#'
+#' @description Unloads `fun.club` from memory in the same way as when quitting R session
+#' 
 #'
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
@@ -1809,13 +1952,16 @@ unload <- function(fun.club.name) {
     invisible(gc()) # gc(verbose = FALSE) still prints output
 }
 
+#' @title
 #' Prints function object
+#'
+#' @description Prints function object
 #'
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
-`[.fun.club` <- function(x, link = NULL, character.only = FALSE) {
-    if (is.null(link)) {
-        ## to do: list all fun.objects in fun.club environment
+`[.fun.club` <- function(x, link = NULL, character.only = FALSE, as = c('data.table', 'detailed.data.table')) {
+    if (is.null(link)) { # return all fun.objects in fun.club environment as a data.table
+        x $ view.as( as = as )
     } else {
         if (!character.only) link <- as.character(substitute(link))
         x $ check.fun.links.and.return.function( link )
@@ -1823,8 +1969,8 @@ unload <- function(fun.club.name) {
 }
 
 
-#' @name Generates object
-#' @title Generates object
+#' @title
+#' Generates object
 #' 
 #' @description `...` arguments are forwarded to the function corresponding to
 #'     this `fun.link` unchanged. For that, the `sys.call()` expression is
@@ -1895,14 +2041,15 @@ unload <- function(fun.club.name) {
     ## be used as the function object arguments, so always removing them looks
     ## safe.
     ##
-    missing.args <- Filter(function(i) identical(cl[[i]],
-                                                 quote(expr=)),
-                           seq_along(cl))
+    missing.args <- Filter(function(i) identical(cl[[i]], quote(expr=)), seq_along(cl))
     if (length( missing.args ) > 0) cl <- cl[ -missing.args ]
     eval(cl, envir = parent.frame())
 }
 
+#' @title
 #' Removes generated object from memory but keeps it on disk
+#'
+#' @description Removes generated object from memory but keeps it on disk
 #'
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
@@ -1935,7 +2082,10 @@ unload <- function(fun.club.name) {
     x
 }
 
+#' @title
 #' Deletes `fun.link`
+#'
+#' @description Deletes `fun.link`
 #' 
 #' @author Vladislav BALAGURA <balagura@cern.ch>
 #' @export
@@ -1968,7 +2118,11 @@ unload <- function(fun.club.name) {
 }
 
 ## to do: should be the  same  as for fc[fo]
+#' @title
 #' Prints function corresponding to the function object
+#'
+#' @description Prints function corresponding to the function object
+#' 
 #' 
 #' @return `fun.link` invisibly
 #' @author Vladislav BALAGURA <balagura@cern.ch>
