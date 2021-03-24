@@ -10,8 +10,6 @@
 using namespace Rcpp;
 
 /**
-   String to integer encoder
-
    Initializes C++ Encoder containers.
 
    @return R external pointer which "wraps" the C++ pointer to the newly
@@ -28,8 +26,6 @@ XPtr<Encoders > new_arg_encoder() {
 }
 
 /**
-   String to integer encoder
-
    Converts a character representation of function arguments to a positive
    integer. Together with the name of the function object it gives the unique
    identificator of the result returned by the function. If the result is
@@ -87,8 +83,6 @@ List add_arg(XPtr<Encoders> xptr, std::string fo, std::string arg, std::string p
 }
 
 /**
-   String to integer encoder
-
    Returns the unique positive integer corresponding to the result calculated
    by the function `fo` with the given arguments.
 
@@ -115,8 +109,6 @@ int ind_arg(XPtr<Encoders> xptr, std::string fo, std::string arg) {
 }
 
 /**
-   String to integer encoder
-
    Returns "human-readable" printable representation of the arguments
    corresponding to the given function object name `fo` and the integer number `ind`.
 
@@ -144,8 +136,34 @@ CharacterVector printable_arg(XPtr<Encoders> xptr, const std::string& fo, int in
 }
 
 /**
-   String to integer encoder
+   Returns the unique character representation (not "human-readable) of
+   function arguments corresponding to the given function object name `fo` and
+   the integer number `ind`.
 
+   @param fo The name of the function object
+   @param ind The integer number which uniquely codes the combination of arguments
+
+   @return The unique character representation of the arguments as a character
+   string vector with one element. If the function object or the integer is
+   not found, an empty character vector is returned.
+
+   @author Vladislav BALAGURA <balagura@cern.ch>
+
+   @keywords internal
+*/
+// [[Rcpp::export]]
+CharacterVector serialized_arg(XPtr<Encoders> xptr, const std::string& fo, int ind) {
+  Encoders::const_iterator it1 = xptr->find( fo );
+  if (it1 == xptr->end()) return CharacterVector();
+  std::map<int, std::pair<std::string, std::string> >::const_iterator it2 =
+    it1->second.m_inv.find( ind );
+  if (it2 == it1->second.m_inv.end()) return CharacterVector();
+  CharacterVector res(1);
+  res[0] = it2->second.first;
+  return res;
+}
+
+/**
    Deletes a character string from the associative collection of (string -
    integer) pairs.
 
@@ -176,8 +194,6 @@ int rm_arg(XPtr<Encoders> xptr, std::string fo, int ind) {
 }
 
 /**
-   String to integer encoder
-   
    Initializes encoder with (string - printable string - integer) triples
    given in vectors `args`, `printable_args`, `inds` for a single function
    object named `fo_name`. `x[fo_name].holes` is filled with "holes", ie. with
@@ -213,8 +229,6 @@ void load_fo_arg(XPtr<Encoders> xptr,
 }
 
 /**
-   String to integer encoder
-   
    Creates the encoder with (string - printable string - integer) triples for
    all function objects. This structure is stored to disk when fun.club is
    deleted, eg. between the R sessions. The function below is used to restore
@@ -246,8 +260,6 @@ XPtr<Encoders > load_arg(List arg_encoder) {
 std::string get_key  (std::pair<std::string, int> p) { return p.first; }
 int         get_value(std::pair<std::string, int> p) { return p.second; }
 /**
-   String to integer encoder
-   
    Dumps (string - integer) pairs for saving. `holes` and `values` are not
    saved as they are redundant.
    
@@ -282,8 +294,6 @@ List dump_arg(XPtr<Encoders> xptr) {
 }
 
 /**
-   String to integer encoder
-   
    prints the encoder content for debugging
    
    @return void
@@ -316,8 +326,6 @@ void print_arg(XPtr<Encoders> xptr) {
 }
 
 /**
-   String to integer encoder
-   
    Clears and resets the encoder.
    
    @return void
