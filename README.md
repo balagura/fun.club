@@ -96,22 +96,21 @@ One can have many `fun.club`s open at the same time if they all point to
 different physical directories.
 
 # Installation
-requires Rcpp and devtools packages.
-
+requires Rcpp package. If you do not have it, install with
+```
+R
+install.packages('Rcpp')
+```
+Then type the following:
 ```
 git clone https://github.com/balagura/fun.club.git
+R CMD build fun.club
+(sudo) R CMD INSTALL fun.club_<version>.tar.gz
 ```
-This creates 'fun.club' subdirectory in the current directory.
-Then, in the R session type
+
+Alternatively, if you have devtools package this can be performed in R session:
+
 ```
-devtools::document('fun.club')
-Rcpp::compileAttributes('fun.club')
-```
-To install system-wide, restart the session with the root privileges
-```
-sudo R
-```
-(or just continue in the same R session to install for the current user only) and type
-```
-devtools::install('fun.club')
+(sudo) R
+devtools::install_github('balagura/fun.club')
 ```
