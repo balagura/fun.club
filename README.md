@@ -96,7 +96,7 @@ One can have many `fun.club`s open at the same time if they all point to
 different physical directories.
 
 # Installation
-requires Rcpp package. If you do not have it, install with
+fun.club requires Rcpp package. If you do not have it, install with
 ```
 R
 install.packages('Rcpp')
@@ -105,8 +105,11 @@ Then type the following:
 ```
 git clone https://github.com/balagura/fun.club.git
 R CMD build fun.club
-(sudo) R CMD INSTALL fun.club_<version>.tar.gz
+sudo R CMD INSTALL fun.club_<version>.tar.gz
 ```
+This will install fun.club system-wide. If you do not have root privileges or
+want a local installation for only one user and your setup allows it, run the
+last command without sudo.
 
 Alternatively, if you have devtools package this can be performed in R session:
 
