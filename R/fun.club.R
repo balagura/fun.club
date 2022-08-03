@@ -1111,7 +1111,7 @@ make.fun.club <- function(dir,
                 } else {
                     s <- paste0(plural[1L],' ',s,' ',plural[2L])
                 }
-                warning(s,' ', rest)
+                warning(s,' ', rest, immediate. = TRUE, call. = FALSE)
             }
         }
 
@@ -1119,20 +1119,24 @@ make.fun.club <- function(dir,
         ## rebinded, otherwise, recreate them.
         check.fun.links <- function( fo ) {
             st <- link.status( fo )
-            complain(st[['deleted']],
-                     c('fun.object','has'), c('fun.objects','have'),
-                     'been deleted and will be restored')
-            complain(st[['rebinded']],
-                     c('the name','has'), c('the names','have'),
-                     paste0('been reassigned from fun.object to something else. ',
-                            'It will be reassigned back'))
+            links <- fun.env[[ fo ]] $ links
             for (i in c(st[['deleted']],
                         st[['rebinded']])) {
-                missing.link <- fun.env[[ fo ]] $ links[[ i ]]
+                missing.link <- links[[ i ]]
                 envir[[ missing.link ]] <-
                     structure(list(fun.object = fo, i = i, link.methods = link.methods),
                               class='fun.link')
             }
+            complain(links[ st[['deleted']] ],
+                     c('fun.object','has been deleted but is restored'),
+                     c('fun.objects','have been deleted but are restored'),
+                     '')
+            complain(links[ st[['rebinded']] ],
+                     c('the name',
+                       'has been reassigned from fun.object to something else; it is reassigned back'),
+                     c('the names',
+                       'have been reassigned from fun.objects to something else; they are reassigned back'),
+                     '')
         }
 
         ## Finds "fo" corresponding to "link", calls check.fun.links( fo ) 
@@ -1152,7 +1156,8 @@ make.fun.club <- function(dir,
                 link <- links[ i ]
                 if (exists(link, envir = envir, inherits = FALSE)) {
                     rm(list = link, envir = envir) # name conflict
-                    warning('The existed object ',link,' has been deleted')
+                    warning('The existed object ',link,' has been deleted',
+                            immediate. = TRUE, call. = FALSE)
                 }
                 envir[[ link ]] <-
                     structure(list(fun.object = fo, i = i, link.methods = link.methods),
@@ -1202,9 +1207,12 @@ make.fun.club <- function(dir,
                 rm(list = fo, envir = fun.env)   
             }
             complain(deleted,  c('fun.object','has'), c('fun.objects','have'), 'been already deleted')
-            complain(rebinded, c('the name','has'), c('the names','have'),
-                     paste0('been reassigned from fun.object to something else. ',
-                            'The reassigned object is DELETED'))
+            complain(rebinded,
+                     c('the name','has been reassigned from fun.object to something else. ',
+                       'The reassigned object is DELETED'),
+                     c('the names','have been reassigned from fun.object to something else. ',
+                       'The reassigned objects are DELETED'),
+                     '')
         }
 
         ## returns unique vector of common functions serving the given vector
@@ -1227,7 +1235,8 @@ make.fun.club <- function(dir,
             if (l > 0) {
                 warning(paste0(wrong.names, collapse=', '),
                         if (l==1L) ' does' else ' do',
-                        ' not exist and will not be deleted')
+                        ' not exist and will not be deleted',
+                        immediate. = TRUE, call. = FALSE)
             }
             rm.fun.objects( linked.funs( links ))
         }
@@ -1243,39 +1252,37 @@ make.fun.club <- function(dir,
                 stop('Link names must be unique', call. = FALSE)
             fos <- linked.funs( intersect( links, ls(all.names=TRUE, link.env) ))
             fos.print <- fun.names( fos )
-            ## check whether one just needs to update fun
+            ## either links exactly match or correspond 1) to several existing fun.objects or 2) to
+            ## one but with names mismatch, or 3) to zero. In 1-2): delete all
+            ## existing fun.objects with a warning.
+            ##
+            ## 
             if (length(fos) == 1L) {
                 f.env <- fun.env[[ fos ]]
-                if (identical(f.env $ links, links)) {
-                    ## exact correspondance to one fun.object
+                if (identical(f.env $ links, links)) { # exact match: check whether fun should be updated
+                    ## First, check that fos's links are not accidentally
+                    ## deleted in "external" environment. If so, recreate
+                    ## missing links. Do this always, regardless of whether
+                    ## the function update is needed
+                    check.fun.links( fos )
+                    ##
                     if (! isTRUE(all.equal(f.env $ fun, fun)) ) { # new fun
                         rm.all.generated( fos )
                         if (verbose >= 1) message('updating ', fos.print)
-                        f.env $ fun <- fun
-                        ## assign in explicit environment
-                        ## links match exactly, no need to relink
-                    } else { ## check that fos's links are not accidentally
-                        ## deleted in "external" environment, recreate
-                        ## missing links if necessary
-                        check.fun.links(fos)
+                        f.env $ fun <- fun # fun update
                     }
-                    return() # both in case of update and if fun matches
-                }
-            }
-            ## either links correspond 1) to several existing fun.objects or 2) to
-            ## one but with names mismatch, or 3) to zero. In 1-2): delete all
-            ## existing fun.objects with a warning.
-            if (length(fos) > 1L) {
-                warning(paste0(links, collapse=', '),
-                        ' correspond to several fun.objects: ',
+                    return() # do nothing else if match is exact
+                } else { # names mismatch for one fun.object
+                    warning('given names ', paste0(links, collapse=', '),
+                            ' do not match the old fun.object ',
+                            fos.print,
+                            immediate. = TRUE, call. = FALSE)
+                }                    
+            } else if (length(fos) > 1L) { # names from several existing fun.objects
+                warning('given together names ',paste0(links, collapse=', '),
+                        ' correspond to different fun.objects: ',
                         paste0(fos.print, collapse=', '),
-                        immediate. = TRUE) # prints warning immediately
-            } else if (length(fos) == 1L) { # there should be names mismatch,
-                ## otherwise this case was considered above
-                warning('given names ', paste0(links, collapse=', '),
-                        ' do not match the old names of fun.object ',
-                        fos.print,
-                        immediate. = TRUE) # prints warning immediately
+                        immediate. = TRUE, call. = FALSE)
             }
             rm.fun.objects( fos )
             ## Create new
@@ -1381,7 +1388,7 @@ make.fun.club <- function(dir,
                 if (length(not.deleted) > 0) {
                     warning(paste0(not.deleted, collapse = ', '),
                             if (length(not.deleted) == 1) ' file' else ' files',
-                            ' can not be deleted')
+                            ' can not be deleted', immediate. = TRUE, call. = FALSE)
                 } else {
                     fs <- file.summary(fo, ind)
                     if (verbose >= 2 && length(fs) != 0)
@@ -1824,14 +1831,15 @@ make.fun.club <- function(dir,
             link <- f.env $ links [ i.link ]
             l.name <- obj.name(fo, ind, link)
             if ( ind == 0 ) {
-                warning(l.name,' does not exist')
+                warning(l.name,' does not exist', immediate. = TRUE, call. = FALSE)
             } else {
                 e <- f.env[[ as.character(ind) ]]
                 if (length( e$file ) == 0) {
-                    warning(l.name,' is not saved to disk, nothing is done')
+                    warning(l.name,' is not saved to disk, nothing is done',
+                            immediate. = TRUE, call. = FALSE)
                 } else {
                     if (is.null( e$data.env[[ link ]] )) {
-                        warning(l.name,' is not in memory') 
+                        warning(l.name,' is not in memory', immediate. = TRUE, call. = FALSE) 
                     } else {
                         e$data.env[[ link ]] <- NULL
                         ## note, if data.env were a list, to set the list
@@ -2077,7 +2085,8 @@ unload <- function(fun.club.name) {
     } else {
         warning('only NULL can be assigned to fun.object like ',
                 'f[[...]] = NULL,\n',
-                'in which case f[...] is deleted from memory but kept on disk')
+                'in which case f[...] is deleted from memory but kept on disk',
+                immediate. = TRUE, call. = FALSE)
     }
     x
 }
@@ -2112,7 +2121,8 @@ unload <- function(fun.club.name) {
         eval(cl, envir = parent.frame())
     } else {
         warning('only NULL can be assigned to fun.object like f[X] = NULL,\n',
-                'in which case f[X] is deleted with all dependencies')
+                'in which case f[X] is deleted with all dependencies',
+                immediate. = TRUE, call. = FALSE)
     }
     x
 }
