@@ -1783,7 +1783,7 @@ make.fun.club <- function(dir,
                     rm.generated(fo, ind, indent = indent,
                                  parents = stack $ unique.top())
                     stack $ clear()           # reset,
-                    stop( conditionMessage(e), call. = FALSE )  # break recursion and propagate stop() to top
+                    stop( e )  # break recursion and propagate stop() to top
                 }, interrupt = function( e ) { # callback for interrupt
                     ## clean in case something was created
                     rm.generated(fo, ind, indent = indent,
