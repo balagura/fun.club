@@ -7,22 +7,54 @@
 make.fun.club(
   dir,
   envir = globalenv(),
-  extension.selector = function(object) {     is.gg <- function(x) {        
-    any(c("ggplot", "grob") \%in\% class(x))     }     if (is.gg(object) ||
-    is.list(object) && all(lapply(object, is.gg) == TRUE)) {         c("rds", "pdf")    
-    }     else if ("data.table" \%in\% class(object) && all(lapply(object, is.atomic) ==
-    TRUE) && nrow(object) > 0L) {         "fst"     }     else if ("connection" \%in\%
-    class(object)) {         "raw"     }     else {         "rds"     } },
+  extension.selector = function(object) {
+     is.gg <- function(x) {
+        
+    any(c("ggplot", "grob") \%in\% class(x))
+     }
+     if (is.gg(object) ||
+    is.list(object) && all(lapply(object, is.gg) == TRUE)) {
+         c("rds", "pdf")
+   
+     }
+     else if ("data.table" \%in\% class(object) && all(lapply(object, is.atomic)
+    == TRUE) && nrow(object) > 0L) {
+         "fst"
+     }
+     else if ("connection"
+    \%in\% class(object)) {
+         "raw"
+     }
+     else {
+         "rds"
+     }
+ },
   savers = list(rds = c(function(object, file) saveRDS(object, file = file),
     function(file) readRDS(file = file)), fst = c(function(object, file)
     write.fst(object, path = file, compress = 100), function(file) read.fst(path = file,
-    as.data.table = TRUE)), raw = c(function(object, file) {     l <- length(object)    
-    writeBin(object = l, size = 8L)     writeBin(object = object, con = file(file), open
-    = "wb") }, function(file) {     n.bytes <- readBin(con = file, what = integer(), n =
-    1L, size = 8L)     readBin(con = file, what = raw(), n = n.bytes) }), pdf =
-    c(function(object, file) {     pdf(file)     if ("grob" \%in\% class(object)) {      
-      grid.newpage()         grid.draw(object)     } else {        
-    suppressWarnings(print(object))     }     dev.off() })),
+    as.data.table = TRUE)), raw = c(function(object, file) {
+     l <- length(object)
+   
+     writeBin(object = l, size = 8L)
+     writeBin(object = object, con = file(file),
+    open = "wb")
+ }, function(file) {
+     n.bytes <- readBin(con = file, what =
+    integer(), n = 1L, size = 8L)
+     readBin(con = file, what = raw(), n = n.bytes)
+
+    }), pdf = c(function(object, file) {
+     pdf(file)
+     if ("grob" \%in\%
+    class(object)) {
+         grid.newpage()
+         grid.draw(object)
+     } else {
+   
+         suppressWarnings(print(object))
+     }
+     dev.off()
+ })),
   verbose = 2
 )
 }

@@ -39,18 +39,22 @@ done fully automatically and is hidden from the user. These two arguments,
 however, alter the default algorithms.
 
 \emph{Advanced:} 'output.env' argument can be useful for storing big
-objects. For example, let's consider\preformatted{fun.club[typical.use] <- function(n) 1:n
-}
+objects. For example, let's consider
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{fun.club[typical.use] <- function(n) 1:n
+}\if{html}{\out{</div>}}
 
 Then, eg. the call \code{typical.use[100000]} generates a "big object" which is
 returned by the function and then copied to its final destination by the
 library. To avoid copying, the object can be placed directly into the final
 place, or, more precisely, to the final \code{environment}. The latter acts as a
 \code{directory} holding R objects and is referred to by \code{output.env}. For
-example,\preformatted{fun.club[advanced.use] <- function(n, output.env) \{
+example,
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{fun.club[advanced.use] <- function(n, output.env) \{
   output.env[[ 'advanced.use' ]] <- 1:n
 \}
-}
+}\if{html}{\out{</div>}}
 
 Using \code{output.env[[ 'advanced.use' ]] <- 1:n} the user stores directly
 his/her "big object", so no extra copying is needed.  Initially,
@@ -95,37 +99,43 @@ extensions. \code{file.ext} keeping the file names can be used in the function
 body (but the user should not modify them). The files will be saved in the
 same internal directories where \code{fun.club} stores other objects.
 
-The syntax is explained in the following example\preformatted{fun.club[ write.external.files ] <-
+The syntax is explained in the following example
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{fun.club[ write.external.files ] <-
   function(x, file.ext = c("txt", "txt.gz"))
 \{
   writeLines(as.character(x), con = file.ext[1])
   system(paste("gzip -c", file.ext[1], ">", file.ext[2]))
   file.ext
 \}
-}
+}\if{html}{\out{</div>}}
 
 Then, \code{write.external.files[1:10]} stores the numbers 1:10 to the files
-<name>.txt and (in gzip'ed form) <name>.gz controlled by \code{fun.club}. The
-exact <name> is unique and is chosen by \code{fun.club} internal algorithms.
+\if{html}{\out{<name>}}.txt and (in gzip'ed form) \if{html}{\out{<name>}}.gz controlled by \code{fun.club}. The
+exact \if{html}{\out{<name>}} is unique and is chosen by \code{fun.club} internal algorithms.
 
 Since the function above returns \code{file.ext}, the return value is a vector
-(<name>.txt, <name>.gz). Calling \code{write.external.files[1:10]} with the same
+(\if{html}{\out{<name>}}.txt, \if{html}{\out{<name>}}.gz). Calling \code{write.external.files[1:10]} with the same
 arguments always returns these file names without regenerating the files.
 
-Using \code{file.ext} argument, the user informs the library that <name>.txt,
-<name>.gz depend on its generating function and should be deleted if the
+Using \code{file.ext} argument, the user informs the library that \if{html}{\out{<name>}}.txt,
+\if{html}{\out{<name>}}.gz depend on its generating function and should be deleted if the
 latter (or any function object which it might contain) changes.
 
 In the example above \code{file.ext} was given as a default argument, but it can
-also be redefined by the caller, eg.\preformatted{write.external.files[1:10, file.ext = c('raw', 'raw.gz')]
-}
+also be redefined by the caller, eg.
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{write.external.files[1:10, file.ext = c('raw', 'raw.gz')]
+}\if{html}{\out{</div>}}
 
 Since the argument combination is different here, this will generate a new
 object.
 
 If several function objects are defined using one function at once,
 \code{file.ext} should be given as a list of character vectors, one per function
-object:\preformatted{fun.club[ writer.1, writer.2 ] <-
+object:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{fun.club[ writer.1, writer.2 ] <-
   function(x, file.ext = list(c("txt", "txt.gz"), "gz"))
 \{
   writeLines(as.character(x), con = file.ext[[ 1 ]][ 1 ])
@@ -134,12 +144,12 @@ object:\preformatted{fun.club[ writer.1, writer.2 ] <-
   writeLines(as.character(2*x), con = file.ext[[ 2 ]][ 1 ])
   file.ext
 \}
-}
+}\if{html}{\out{</div>}}
 
 In this case \code{file.ext} is expanded to the corresponding list of file
 name(s) with one element per function object.  If there is only one
 function object, as in the first example, \code{file.ext} might be alternatively
-given as a list with a single element eg. as \code{list(c("txt", "txt.gz"))}. Then it would be expanded to the list(c("<name>.txt",
+given as a list with a single element eg. as \code{list(c("txt", "txt.gz"))}. Then it would be expanded to the list(c("\if{html}{\out{<name>}}.txt",
 "<name.txt.gz")) instead of the character vector.
 }
 \examples{
