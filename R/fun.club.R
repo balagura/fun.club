@@ -481,7 +481,7 @@ make.fun.club <- function(dir,
         ## the `new`ly created C++ encoder (`load_arg()` function below) which
         ## is returned to R under the same name `arg.encoder`. This object
         ## will coexist in memory with `fun.club`. When `fun.club` will be
-        ## saved, C++ encoder will be agained `dump_arg()`ed to R
+        ## saved, C++ encoder will be again `dump_arg()`ed to R
         ## list-of-lists. The C++ encoder will be deleted while the R
         ## list-of-lists will be saved to file under the same name
         ## `arg.encoder`.
@@ -764,9 +764,9 @@ make.fun.club <- function(dir,
             not.func <- Filter(function(n) !is.function(fun.club.env[[ n ]]),
                                ls(all.names = TRUE, fun.club.env ))
             keep <- c(
-                ## pointer to C++ encoder. It converts a character
+                ## pointer to C++ encoder. It converts a unique character
                 ## representation of the function arguments (obtained with
-                ## `serialize()`) to a positive integer. Together with the
+                ## `serialize.list()`) to a positive integer. Together with the
                 ## name of the function object it gives the unique
                 ## identifier of every result returned by the function. If
                 ## the result is discarded later, the integer number is
@@ -1009,48 +1009,6 @@ make.fun.club <- function(dir,
                                      '}')
                    }, USE.NAMES = FALSE)
         }
-        
-        ## `path` everywhere in the following is a character string with
-        ##
-        ## `(function name potentially common to several fun.links,
-        ## serialized.argument.names,
-        ## 1st argument value,
-        ## 2nd argument value,
-        ## ...).
-        ##
-        ## All function arguments can be absent, but the function name
-        ## should always be present, therefore length(path) >= 1.
-        ##
-        ## Note that internally the object corresponding to `path`is stored in
-        ##
-        ## `fun.env[[ function name ]] [[ serialized.arg.names ]] [[
-        ##   1st arg ]] [[ 2nd arg ]] ...`
-        ##
-        ## "serialized.arg.names" codes the sorted vector of all argument
-        ## names.  For unnamed (positional) arguments it contains "".
-        ##
-        ## Specifically, "coded" means:
-        ##
-        ##   `rawToChar(serialize(names, connection=NULL, ascii=TRUE))`
-        ##
-        ## This form is chosen because it uniquely represents several
-        ## character strings. Eg.
-        ##
-        ## `paste0(names, collapse='\n')`
-        ##
-        ## is not unique, as `names` can contain `\n` character, as in
-        ## function(`a\nb`=1).
-        ##
-        ## There is a limitation in R that all variable names must have <=
-        ## 10000 bytes. So, in principle, one can not "merge" in one variable
-        ## eg. two arbitrary names each with the length of 10000 bytes. The
-        ## function argument names are usually short, however, so typically
-        ## this should not be a problem. Contrarily, the arguments themselves,
-        ## represented via `as.character`, can be long, therefore each of them
-        ## is allowed to have the maximal length of 10000 bytes, and each
-        ## forms a separate hierarchy level.
-        ##
-        
         ## if `link` is NULL, returns character representation of `fo`, `ind`
         ## pair as "{link1,link2,...}[args]" or "link1[args]" if there is only
         ## one link. If `link` is not NULL, the representation is
@@ -1414,8 +1372,36 @@ make.fun.club <- function(dir,
             }
         }
 
-        ## printable version of the list, eg. for `l = list(a=1, 2)` returns
-        ## "a=1, 2"
+        ## produces a function object "key", a serialized unique string (not
+        ## easily readable by human), from the list of arguments
+        serialized.list <- function(l) {
+            . <- rawToChar( serialize( l, connection = NULL, ascii = TRUE ))
+            ##
+            ## serialized ASCII format == strings separated by '\n'.
+            ## It contains the header made of:
+            ## 'A' - denotes ASCII (not binary) form
+            ## '3' - version (was '2' for 1.4.0 <= R version <= 3.5.0)
+            ## eg. '262658' = X<<16 | Y<<8 | Z for R version X.Y.Z = 4.2.2
+            ## 197888 = 3<<16 + 5<<8 + 0 - code of minimal R version (3.5.0)
+            ##                             that can read this format
+            ## '5'
+            ## 'UTF-8' - encoding (occupying 5 bytes)
+            ##
+            ## So, the serialized string depends on the R-version (coded in
+            ## the 3d place as '262658' above). If the serialized arguments
+            ## were used directly as "keys" of function objects, every new
+            ## R-version would generate new keys, and all objects would be
+            ## regenerated from scratch. Instead, let's modify the 3d place
+            ## (eg. '262658') and set it to 4th (fix it to R 3.5.0):
+            . <- strsplit(., split = '\n', fixed = TRUE)[[ 1 ]] # split to lines
+            .[3] <- .[4] # fix to R 3.5.0
+            paste0(., collapse='\n') # merge lines back
+        }            
+
+        ## produces a human-readable version of the list of function object
+        ## arguments. Eg. for `l = list(a=1, 2)` returns "a=1, 2". Though
+        ## human-readable, this version is not necessarily unique. It is used
+        ## for user friendly printing but not as a unique key
         print.list <- function(l) {
             n <- names(l)
             ## use `deparse` as it is more general than `as.character`
@@ -1442,7 +1428,7 @@ make.fun.club <- function(dir,
                 paste0(n, l, collapse = ', ')
             }
         }
-
+            
         ## vector of link names
         all.links <- function() list(names = ls(all.names=TRUE, link.env),
                                      envir = envir)
@@ -1572,7 +1558,7 @@ make.fun.club <- function(dir,
             ## new object will be generated. If it was generated already, the
             ## arguments were fine.
             ##
-            serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
+            serialized.arg <- serialized.list( args )
             cArgs <- print.list( args )
             l.name <- paste0(link, '[', cArgs, ']')
             indent <- paste0(rep('  ', stack $ len()), collapse='')
@@ -1826,7 +1812,7 @@ make.fun.club <- function(dir,
             i.link <- link.methods[['i.link']]
             f.env <- fun.env[[ fo ]]
             args <- arg.list(...)
-            serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
+            serialized.arg <- serialized.list( args )
             ind <- ind_arg(arg.encoder, fo, serialized.arg)
             link <- f.env $ links [ i.link ]
             l.name <- obj.name(fo, ind, link)
@@ -1862,7 +1848,7 @@ make.fun.club <- function(dir,
             fo <- link.methods[['fun.object']]
             f.env <- fun.env[[ fo ]]
             args <- arg.list(...)
-            serialized.arg <- rawToChar( serialize( args, connection = NULL, ascii = TRUE ))
+            serialized.arg <- serialized.list( args )
             ind <- ind_arg(arg.encoder, fo, serialized.arg)
             if (ind == 0) {
                 cArgs <- print.list( args )
