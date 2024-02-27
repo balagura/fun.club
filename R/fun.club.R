@@ -1350,7 +1350,8 @@ make.fun.club <- function(dir,
                 } else {
                     fs <- file.summary(fo, ind)
                     if (verbose >= 2 && length(fs) != 0)
-                        message(indent, '|files ', fs)
+                        message(indent, '| file',
+                            if (length( fs ) > 1) 's', ': ', fs,' <- ', .)
                 }
                 ## finally, delete this leaf of the Directed Acyclic Graph
                 ## (it becomes the leaf after deleting the children)
@@ -1365,7 +1366,7 @@ make.fun.club <- function(dir,
             if (verbose >= 2) {
                 if ((. <- obj.names( parents )) != '') {
                     message(indent, '| link',
-                            if (length( parents ) > 1) 's', o.name,' <- ', .)
+                            if (length( parents ) > 1) 's', ': ', o.name,' <- ', .)
                 }
                 message(indent, 'deletion of ', o.name,
                         ' is finished')
@@ -1764,12 +1765,16 @@ make.fun.club <- function(dir,
                     ## only in the very end, as it might be needed to remove
                     ## links in case of error
                 }, error = function( e ) { # callback for error
-                    message( indent, 'Error is detected when generating ', o.name )
+                    if (stack $ len() > 0) { # print only the innermost object
+                        ## producing the error and without indent, so "Error
+                        ## ..." starts the line and might be color-coded
+                        message( 'Error is detected when generating ', o.name )
+                    }
                     ## clean in case something was created
                     rm.generated(fo, ind, indent = indent,
                                  parents = stack $ unique.top())
-                    stack $ clear()           # reset,
-                    stop( e )  # break recursion and propagate stop() to top
+                    stack $ clear() # reset,
+                    stop( e )       # break recursion and propagate stop() to top
                 }, interrupt = function( e ) { # callback for interrupt
                     ## clean in case something was created
                     rm.generated(fo, ind, indent = indent,
