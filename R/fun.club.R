@@ -1396,7 +1396,8 @@ make.fun.club <- function(dir,
             ## (eg. '262658') and set it to 4th (fix it to R 3.5.0):
             . <- strsplit(., split = '\n', fixed = TRUE)[[ 1 ]] # split to lines
             .[3] <- .[4] # fix to R 3.5.0
-            paste0(., collapse='\n') # merge lines back
+            . <- paste0(., collapse='\n') # merge lines back
+            paste0(., '\n')               # and add final '\n'
         }            
 
         ## produces a human-readable version of the list of function object
