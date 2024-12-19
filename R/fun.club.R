@@ -745,25 +745,34 @@ make.fun.club <- function(dir,
             link <- link[, c(rename(populate(from.fun.group, from.call.i), 'from'),
                              rename(populate(  to.fun.group,   to.call.i),   'to')), by = names(link)]
             setcolorder(link, c('from', 'to'), before = 1L)
+            ## print dependency tree below or above a given function
+            ##            
+            ## with.arg = FALSE below does not distinguish calls of the same
+            ## function with different arguments
             ##
-            print.parents <- function(fun, offset = 0) {
-                if (offset == 0) cat(fun,'\n')
-                from <- unique(link[to.fun.group == fun] $ from.fun.group)
-                offset <- offset + 2
-                offset.space <- rep(' ', offset)
-                for (x in from) {
-                    cat(offset.space, x, '\n')
-                    print.parents(x, offset)
+            recursive.print <- function(arg, fun, offset = '') {
+                for (x in fun(arg)) {
+                    cat(offset, x, '\n')
+                    recursive.print(x, fun, paste0(offset, '   '))
                 }
             }
-            print.children <- function(fun, offset = 0) {
-                if (offset == 0) cat(fun,'\n')
-                to <- unique(link[from.fun.group == fun] $ to.fun.group)
-                offset <- offset + 2
-                offset.space <- rep(' ', offset)
-                for (x in to) {
-                    cat(offset.space, x, '\n')
-                    print.children(x, offset)
+            ## 
+            print.parents <- function(fun, with.arg =  FALSE) {
+                if (with.arg) {
+                    for (. in link[to.fun.group == fun]$to) {
+                        recursive.print(., function(x) link[to == x]$from)
+                    }
+                } else {
+                    recursive.print(fun, function(x) unique(link[to.fun.group == x] $ from.fun.group))
+                }
+            }
+            print.children <- function(fun, with.arg =  FALSE) {
+                if (with.arg) {
+                    for (. in link[from.fun.group == fun]$from) {
+                        recursive.print(., function(x) link[from == x]$to)
+                    }
+                } else {
+                    recursive.print(fun, function(x) unique(link[from.fun.group == x] $ to.fun.group))
                 }
             }
             ##
