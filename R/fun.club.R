@@ -242,6 +242,11 @@ NULL
 ## 
 
 ## TODO:
+##
+## 5 Sep 2024: after interruption and change from 3 functions in fun
+## group to 2, the "upper" saved file was not deleted (may be all were not
+## deleted, not sure since lower ones were regenerated)
+##
 ## check returning null - seems to cause re-read from disk every time?
 ## doc about catching stops / exceptions - this breaks stack, not allowed
 ## default func arg=... != ... (positional vs named arg)
@@ -740,7 +745,30 @@ make.fun.club <- function(dir,
             link <- link[, c(rename(populate(from.fun.group, from.call.i), 'from'),
                              rename(populate(  to.fun.group,   to.call.i),   'to')), by = names(link)]
             setcolorder(link, c('from', 'to'), before = 1L)
-            list(fun = fun, obj = obj, link = link)
+            ##
+            print.parents <- function(fun, offset = 0) {
+                if (offset == 0) cat(fun,'\n')
+                from <- unique(link[to.fun.group == fun] $ from.fun.group)
+                offset <- offset + 2
+                offset.space <- rep(' ', offset)
+                for (x in from) {
+                    cat(offset.space, x, '\n')
+                    print.parents(x, offset)
+                }
+            }
+            print.children <- function(fun, offset = 0) {
+                if (offset == 0) cat(fun,'\n')
+                to <- unique(link[from.fun.group == fun] $ to.fun.group)
+                offset <- offset + 2
+                offset.space <- rep(' ', offset)
+                for (x in to) {
+                    cat(offset.space, x, '\n')
+                    print.children(x, offset)
+                }
+            }
+            ##
+            list(fun = fun, obj = obj, link = link,
+                 print.parents = print.parents, print.children = print.children)
         }
         
         clean.env <- function(fun.club.env) {
