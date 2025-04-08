@@ -557,7 +557,7 @@ make.fun.club <- function(dir,
                         }
                     }
                 ## Comparison of functions can be done similarly to fun.objects:
-                ## if (! isTRUE(all.equal(f.env $ fun, fun)) ||  # new fun
+                ## isFALSE(all.equal(f.env $ fun, fun), check.environment = FALSE)
                 ## 
             }
             version <- function(ext) versions[[ ext ]]
@@ -1234,7 +1234,7 @@ make.fun.club <- function(dir,
                     ## the function update is needed
                     check.fun.links( fos )
                     ##
-                    if (! isTRUE(all.equal(f.env $ fun, fun)) ) { # new fun
+                    if ( isFALSE(all.equal(f.env $ fun, fun), check.environment = FALSE) ) { # new fun
                         rm.all.generated( fos )
                         if (verbose >= 1L) message('updating ', fos.print)
                         f.env $ fun <- fun # fun update
